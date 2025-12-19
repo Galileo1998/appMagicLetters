@@ -1,39 +1,35 @@
-// app/create.tsx
-import { makeLocalId } from "@/src/utils/id";
-import { router } from "expo-router";
+import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import { Alert, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { initDb } from "../src/db";
 import { createLetter } from "../src/repos/letters_repo";
 
 export default function CreateScreen() {
+  const router = useRouter();
   const [childCode, setChildCode] = useState("");
-  const [saving, setSaving] = useState(false);
 
-  async function onCreate() {
-    const code = childCode.trim();
-    if (!code) {
-      Alert.alert("Falta código", "Escribe el código del niño.");
-      return;
-    }
-
+  const onCreate = async () => {
     try {
-      setSaving(true);
-      const localId = await makeLocalId("L");
-      await createLetter(localId, code);
+      const code = childCode.trim();
+      if (!code) {
+        Alert.alert("Error", "Ingresa el código del niño/a");
+        return;
+      }
+
+      await initDb();
+      const localId = await createLetter(code);
 
       router.replace(`/letter/${localId}/options`);
     } catch (e: any) {
-      Alert.alert("Error", String(e?.message ?? e));
-    } finally {
-      setSaving(false);
+      Alert.alert("Error", `No se pudo crear la carta.\n${e?.message ?? e}`);
     }
-  }
+  };
 
   return (
     <View style={styles.container}>
-      <Text style={styles.h1}>Crear carta</Text>
+      <Text style={styles.title}>Crear carta</Text>
 
-      <Text style={styles.label}>Código del niño</Text>
+      <Text style={styles.label}>Código del niño/a</Text>
       <TextInput
         value={childCode}
         onChangeText={setChildCode}
@@ -42,18 +38,18 @@ export default function CreateScreen() {
         autoCapitalize="characters"
       />
 
-      <Pressable style={[styles.btn, saving && { opacity: 0.6 }]} onPress={onCreate} disabled={saving}>
-        <Text style={styles.btnText}>{saving ? "Creando..." : "Continuar"}</Text>
+      <Pressable style={styles.btn} onPress={onCreate}>
+        <Text style={styles.btnText}>Continuar</Text>
       </Pressable>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16, gap: 12 },
-  h1: { fontSize: 18, fontWeight: "700" },
+  container: { flex: 1, padding: 16, gap: 10 },
+  title: { fontSize: 20, fontWeight: "800", marginBottom: 6 },
   label: { fontWeight: "700" },
-  input: { borderWidth: 1, borderColor: "#ccc", padding: 12, borderRadius: 10 },
-  btn: { backgroundColor: "#1e62d0", paddingVertical: 12, borderRadius: 10, alignItems: "center" },
-  btnText: { color: "white", fontWeight: "700" },
+  input: { borderWidth: 1, borderColor: "#ccc", borderRadius: 10, padding: 12 },
+  btn: { backgroundColor: "#1f7ae0", padding: 12, borderRadius: 10, alignItems: "center", marginTop: 8 },
+  btnText: { color: "white", fontWeight: "800" },
 });

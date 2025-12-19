@@ -1,24 +1,19 @@
+// app/(tabs)/index.tsx
 import { router } from "expo-router";
 import React, { useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { initDb } from "../../../src/db";
-import { listLetters, type LocalLetterRow } from "../../../src/repos/letters_repo";
+import { initDb } from "../../src/db";
+import { listLetters, type LetterRow } from "../../src/repos/letters_repo";
 
 export default function HomeScreen() {
-  const [letters, setLetters] = useState<LocalLetterRow[]>([]);
+  const [letters, setLetters] = useState<LetterRow[]>([]);
   const [loading, setLoading] = useState(false);
 
   async function refresh() {
     setLoading(true);
     try {
       await initDb();
-
-      // ✅ SOLO BORRADORES:
-      const rows = await listLetters({ onlyDrafts: true });
-
-      // ✅ TODAS:
-      // const rows = await listLetters();
-
+      const rows = await listLetters();
       setLetters(rows);
     } catch (e) {
       console.error("Home refresh failed:", e);
@@ -27,7 +22,9 @@ export default function HomeScreen() {
     }
   }
 
-  useEffect(() => { refresh(); }, []);
+  useEffect(() => {
+    refresh();
+  }, []);
 
   return (
     <View style={styles.container}>
@@ -41,7 +38,7 @@ export default function HomeScreen() {
         <Text style={styles.btnText}>{loading ? "CARGANDO..." : "REFRESCAR"}</Text>
       </Pressable>
 
-      <Text style={styles.section}>Borradores ({letters.length})</Text>
+      <Text style={styles.section}>Cartas loales ({letters.length})</Text>
 
       <ScrollView>
         {letters.map(l => (

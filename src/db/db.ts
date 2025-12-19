@@ -1,31 +1,21 @@
+
 // src/db/db.ts
-import { openDatabaseAsync, SQLiteDatabase } from "expo-sqlite";
+import * as SQLite from "expo-sqlite";
+import { migrate } from "./migrations";
 import { SQLITE_SCHEMA } from "./schema";
 
-const DB_NAME = "scip_cartas_v3.db"; // <-- CAMBIAR VERSION evita la BD vieja
-let db: SQLiteDatabase | null = null;
+let db: SQLite.SQLiteDatabase | null = null;
 
-export async function getDb(): Promise<SQLiteDatabase> {
+export async function getDb(): Promise<SQLite.SQLiteDatabase> {
   if (!db) {
-    db = await openDatabaseAsync(DB_NAME);
+    db = await SQLite.openDatabaseAsync("magic_adventure.db");
+    await db.execAsync(SQLITE_SCHEMA);
+    await migrate(db);
+    console.log("[DB] initialized");
   }
   return db;
 }
 
-export async function exec(sql: string) {
-  const database = await getDb();
-  await database.execAsync(sql);
-}
-
-export async function initDb() {
-  const database = await getDb();
-
-  // Importante: FK ON
-  await database.execAsync("PRAGMA foreign_keys = ON;");
-
-  const statements = SQLITE_SCHEMA.split(";").map(s => s.trim()).filter(Boolean);
-
-  for (const stmt of statements) {
-    await database.execAsync(stmt + ";");
-  }
+export async function initDb(): Promise<void> {
+  await getDb();
 }

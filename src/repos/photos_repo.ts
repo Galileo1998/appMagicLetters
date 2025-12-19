@@ -1,61 +1,53 @@
+// src/repos/photos_repo.ts
 import { getDb } from "../db";
 
 export type PhotoRow = {
   id: number;
   letter_id: string;
-  photo_uri: string | null;
-  created_at?: string | null;
+  slot: 1 | 2 | 3;
+  photo_uri: string;
+  created_at: string | null;
+  updated_at: string | null;
 };
 
-export async function upsertPhoto(letterId: string, photoUri: string) {
+export async function listPhotos(letterId: string): Promise<PhotoRow[]> {
   const db = await getDb();
-
-  // 1) verifica que existe la carta
-  const exists = await db.getFirstAsync<{ c: number }>(
-    `SELECT COUNT(*) as c FROM letters WHERE local_id = ?`,
+  return await db.getAllAsync<PhotoRow>(
+    `SELECT id, letter_id, slot, photo_uri, created_at, updated_at
+     FROM photos
+     WHERE letter_id = ?
+     ORDER BY slot ASC`,
     [letterId]
   );
-  console.log("[PHOTO] letter exists?", letterId, exists?.c);
+}
 
-  try {
-    const existing = await db.getFirstAsync<{ id: number }>(
-      `SELECT id FROM photos WHERE letter_id = ? LIMIT 1;`,
-      [letterId]
-    );
+export async function addPhoto(letterId: string, photoUri: string): Promise<PhotoRow> {
+  const db = await getDb();
 
-    if (existing?.id) {
-      await db.runAsync(`UPDATE photos SET photo_uri = ? WHERE letter_id = ?;`, [photoUri, letterId]);
-    } else {
-      await db.runAsync(`INSERT INTO photos (letter_id, photo_uri) VALUES (?, ?);`, [letterId, photoUri]);
-    }
-
-    console.log("[PHOTO] saved OK", letterId);
-  } catch (e) {
-    console.error("[PHOTO] save failed", e);
-    throw e;
+  const current = await listPhotos(letterId);
+  if (current.length >= 3) {
+    throw new Error("Ya tienes 3 fotos guardadas para esta carta.");
   }
-}
 
-
-export async function getPhoto(letterId: string): Promise<string | null> {
-  const db = await getDb();
-  const row = await db.getFirstAsync<{ photo_uri: string | null }>(
-    `SELECT photo_uri FROM photos WHERE letter_id = ? LIMIT 1;`,
-    [letterId]
+  const used = new Set(current.map(p => p.slot));
+  const slot = ([1, 2, 3] as const).find(s => !used.has(s))!;
+  await db.runAsync(
+    `INSERT INTO photos (letter_id, slot, photo_uri, updated_at)
+     VALUES (?, ?, ?, datetime('now'))`,
+    [letterId, slot, photoUri]
   );
-  return row?.photo_uri ?? null;
-}
 
-export async function countPhotos(letterId: string): Promise<number> {
-  const db = await getDb();
-  const row = await db.getFirstAsync<{ c: number }>(
-    `SELECT COUNT(*) as c FROM photos WHERE letter_id = ?;`,
-    [letterId]
+  const row = await db.getFirstAsync<PhotoRow>(
+    `SELECT id, letter_id, slot, photo_uri, created_at, updated_at
+     FROM photos WHERE letter_id = ? AND slot = ? LIMIT 1`,
+    [letterId, slot]
   );
-  return row?.c ?? 0;
+
+  if (!row) throw new Error("No se pudo leer la foto recién guardada.");
+  return row;
 }
 
-export async function clearPhoto(letterId: string) {
+export async function deletePhoto(letterId: string, slot: 1 | 2 | 3) {
   const db = await getDb();
-  await db.runAsync(`DELETE FROM photos WHERE letter_id = ?;`, [letterId]);
+  await db.runAsync(`DELETE FROM photos WHERE letter_id = ? AND slot = ?`, [letterId, slot]);
 }
