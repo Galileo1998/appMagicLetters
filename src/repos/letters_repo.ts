@@ -17,7 +17,7 @@ export type LetterRow = {
   village: string | null;
   contact_name: string | null;
   due_date: string | null;
-  status: "DRAFT" | "PENDING_SYNC" | "SYNCED" | "ASSIGNED"; // Nuevo estado
+  status: "DRAFT" | "PENDING_SYNC" | "SYNCED" | "ASSIGNED";
 
   text_feelings: string | null;
   text_activities: string | null;
@@ -36,12 +36,13 @@ export type LetterRow = {
 export async function listLetters(params?: { onlyDrafts?: boolean }): Promise<LetterRow[]> {
   const db = await getDb();
   
-  // Modificado: Si pide borradores, también mostramos las ASIGNADAS para que el técnico las vea
+  // --- CAMBIO AQUÍ ---
+  // Antes solo mostraba DRAFT y ASSIGNED.
+  // Ahora incluimos 'PENDING_SYNC' para que las cartas listas para subir NO DESAPAREZCAN.
   const where = params?.onlyDrafts 
-    ? `WHERE ll.status IN ('DRAFT', 'ASSIGNED')` 
+    ? `WHERE ll.status IN ('DRAFT', 'ASSIGNED', 'PENDING_SYNC')` 
     : ``;
 
-  // Seleccionamos todas las columnas (ll.*) para incluir los campos nuevos
   const rows = await db.getAllAsync<LetterRow>(`
     SELECT ll.*,
       (SELECT 1 FROM messages m WHERE m.letter_id = ll.local_id) AS has_message,
@@ -49,7 +50,10 @@ export async function listLetters(params?: { onlyDrafts?: boolean }): Promise<Le
       (SELECT 1 FROM drawings d WHERE d.letter_id = ll.local_id) AS has_drawing
     FROM local_letters ll
     ${where}
-    ORDER BY ll.due_date ASC, ll.updated_at DESC;
+    ORDER BY 
+      CASE WHEN ll.status = 'PENDING_SYNC' THEN 0 ELSE 1 END, -- Muestra las listas para enviar primero
+      ll.due_date ASC, 
+      ll.updated_at DESC;
   `);
 
   return rows.map(r => ({
@@ -60,19 +64,16 @@ export async function listLetters(params?: { onlyDrafts?: boolean }): Promise<Le
   }));
 }
 
-// === NUEVA FUNCIÓN: Guardar datos del servidor ===
 export async function saveSyncedLetter(data: any) {
   const db = await getDb();
   const t = nowISO();
 
-  // 1. Verificar si ya existe (por server_id)
   const existing = await db.getFirstAsync<{ local_id: string }>(
     `SELECT local_id FROM local_letters WHERE server_id = ?`,
-    [String(data.id)] // data.id viene del PHP (MySQL ID)
+    [String(data.id)] 
   );
 
   if (existing) {
-    // Si existe, actualizamos solo datos informativos
     await db.runAsync(
       `UPDATE local_letters 
        SET slip_id=?, child_name=?, village=?, contact_name=?, due_date=?, updated_at=?
@@ -80,7 +81,6 @@ export async function saveSyncedLetter(data: any) {
       [data.slip_id, data.child_name, data.village, data.contact_name, data.due_date, t, existing.local_id]
     );
   } else {
-    // Si es nueva, la creamos como 'ASSIGNED'
     const newLocalId = makeLocalId();
     await db.runAsync(
       `INSERT INTO local_letters (
@@ -92,7 +92,7 @@ export async function saveSyncedLetter(data: any) {
         newLocalId,
         String(data.id),
         data.slip_id,
-        data.child_nbr,   // MySQL 'child_nbr' -> SQLite 'child_code'
+        data.child_nbr || data.child_code, // Ajuste por si viene con nombre distinto
         data.child_name,
         data.village,
         data.contact_name,
@@ -103,7 +103,6 @@ export async function saveSyncedLetter(data: any) {
   }
 }
 
-// (El resto de funciones se mantienen igual)
 export async function getLetter(localId: string): Promise<LetterRow | null> {
   const db = await getDb();
   const row = await db.getFirstAsync<LetterRow>(
