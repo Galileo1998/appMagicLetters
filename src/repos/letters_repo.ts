@@ -1,11 +1,9 @@
-// src/repos/letters_repo.ts
 import { getDb } from "../db";
 
 function nowISO() {
   return new Date().toISOString();
 }
 
-// id simple sin uuid
 export function makeLocalId() {
   return `L${Date.now()}_${Math.floor(Math.random() * 1e9)}`;
 }
@@ -13,8 +11,13 @@ export function makeLocalId() {
 export type LetterRow = {
   local_id: string;
   server_id: string | null;
+  slip_id: string | null;
   child_code: string;
-  status: "DRAFT" | "PENDING_SYNC" | "SYNCED";
+  child_name: string | null;
+  village: string | null;
+  contact_name: string | null;
+  due_date: string | null;
+  status: "DRAFT" | "PENDING_SYNC" | "SYNCED" | "ASSIGNED"; // Nuevo estado
 
   text_feelings: string | null;
   text_activities: string | null;
@@ -25,65 +28,30 @@ export type LetterRow = {
   created_at: string;
   updated_at: string;
 
-  // ✅ computed
-  has_message?: number;   // 0 | 1
-  photos_count?: number;  // 0..3 (o más si no limitas)
-  has_drawing?: number;   // 0 | 1
+  has_message?: number;
+  photos_count?: number;
+  has_drawing?: number;
 };
 
-export async function listLetters(params?: {
-  onlyDrafts?: boolean;
-}): Promise<LetterRow[]> {
+export async function listLetters(params?: { onlyDrafts?: boolean }): Promise<LetterRow[]> {
   const db = await getDb();
-  const onlyDrafts = params?.onlyDrafts ?? false;
+  
+  // Modificado: Si pide borradores, también mostramos las ASIGNADAS para que el técnico las vea
+  const where = params?.onlyDrafts 
+    ? `WHERE ll.status IN ('DRAFT', 'ASSIGNED')` 
+    : ``;
 
-  const where = onlyDrafts ? `WHERE ll.status = 'DRAFT'` : ``;
-
+  // Seleccionamos todas las columnas (ll.*) para incluir los campos nuevos
   const rows = await db.getAllAsync<LetterRow>(`
-    SELECT
-      ll.local_id,
-      ll.server_id,
-      ll.child_code,
-      ll.status,
-      ll.text_feelings,
-      ll.text_activities,
-      ll.text_learning,
-      ll.text_share,
-      ll.text_thanks,
-      ll.created_at,
-      ll.updated_at,
-
-      -- ✅ Mensaje (messages)
-      CASE
-        WHEN EXISTS (
-          SELECT 1
-          FROM messages m
-          WHERE m.letter_id = ll.local_id
-        ) THEN 1 ELSE 0
-      END AS has_message,
-
-      -- ✅ Fotos (photos)
-      (
-        SELECT COUNT(*)
-        FROM photos p
-        WHERE p.letter_id = ll.local_id
-      ) AS photos_count,
-
-      -- ✅ Dibujo (drawings)
-      CASE
-        WHEN EXISTS (
-          SELECT 1
-          FROM drawings d
-          WHERE d.letter_id = ll.local_id
-        ) THEN 1 ELSE 0
-      END AS has_drawing
-
+    SELECT ll.*,
+      (SELECT 1 FROM messages m WHERE m.letter_id = ll.local_id) AS has_message,
+      (SELECT COUNT(*) FROM photos p WHERE p.letter_id = ll.local_id) AS photos_count,
+      (SELECT 1 FROM drawings d WHERE d.letter_id = ll.local_id) AS has_drawing
     FROM local_letters ll
     ${where}
-    ORDER BY ll.updated_at DESC;
+    ORDER BY ll.due_date ASC, ll.updated_at DESC;
   `);
 
-  // Normalizar para que no salgan undefined
   return rows.map(r => ({
     ...r,
     has_message: Number(r.has_message ?? 0),
@@ -92,49 +60,61 @@ export async function listLetters(params?: {
   }));
 }
 
-export async function getLetter(localId: string): Promise<LetterRow | null> {
+// === NUEVA FUNCIÓN: Guardar datos del servidor ===
+export async function saveSyncedLetter(data: any) {
   const db = await getDb();
+  const t = nowISO();
 
-  const row = await db.getFirstAsync<LetterRow>(
-    `SELECT
-      ll.local_id,
-      ll.server_id,
-      ll.child_code,
-      ll.status,
-      ll.text_feelings,
-      ll.text_activities,
-      ll.text_learning,
-      ll.text_share,
-      ll.text_thanks,
-      ll.created_at,
-      ll.updated_at,
-
-      CASE
-        WHEN EXISTS (
-          SELECT 1 FROM messages m
-          WHERE m.letter_id = ll.local_id
-        ) THEN 1 ELSE 0
-      END AS has_message,
-
-      (
-        SELECT COUNT(*) FROM photos p
-        WHERE p.letter_id = ll.local_id
-      ) AS photos_count,
-
-      CASE
-        WHEN EXISTS (
-          SELECT 1 FROM drawings d
-          WHERE d.letter_id = ll.local_id
-        ) THEN 1 ELSE 0
-      END AS has_drawing
-
-     FROM local_letters ll
-     WHERE ll.local_id = ? LIMIT 1`,
-    [localId]
+  // 1. Verificar si ya existe (por server_id)
+  const existing = await db.getFirstAsync<{ local_id: string }>(
+    `SELECT local_id FROM local_letters WHERE server_id = ?`,
+    [String(data.id)] // data.id viene del PHP (MySQL ID)
   );
 
-  if (!row) return null;
+  if (existing) {
+    // Si existe, actualizamos solo datos informativos
+    await db.runAsync(
+      `UPDATE local_letters 
+       SET slip_id=?, child_name=?, village=?, contact_name=?, due_date=?, updated_at=?
+       WHERE local_id=?`,
+      [data.slip_id, data.child_name, data.village, data.contact_name, data.due_date, t, existing.local_id]
+    );
+  } else {
+    // Si es nueva, la creamos como 'ASSIGNED'
+    const newLocalId = makeLocalId();
+    await db.runAsync(
+      `INSERT INTO local_letters (
+        local_id, server_id, slip_id, child_code, child_name, village, contact_name, due_date,
+        status, text_feelings, text_activities, text_learning, text_share, text_thanks,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ASSIGNED', '', '', '', '', '', ?, ?)`,
+      [
+        newLocalId,
+        String(data.id),
+        data.slip_id,
+        data.child_nbr,   // MySQL 'child_nbr' -> SQLite 'child_code'
+        data.child_name,
+        data.village,
+        data.contact_name,
+        data.due_date,
+        t, t
+      ]
+    );
+  }
+}
 
+// (El resto de funciones se mantienen igual)
+export async function getLetter(localId: string): Promise<LetterRow | null> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<LetterRow>(
+    `SELECT ll.*,
+      (SELECT 1 FROM messages m WHERE m.letter_id = ll.local_id) AS has_message,
+      (SELECT COUNT(*) FROM photos p WHERE p.letter_id = ll.local_id) AS photos_count,
+      (SELECT 1 FROM drawings d WHERE d.letter_id = ll.local_id) AS has_drawing
+     FROM local_letters ll WHERE ll.local_id = ? LIMIT 1`,
+    [localId]
+  );
+  if (!row) return null;
   return {
     ...row,
     has_message: Number(row.has_message ?? 0),
@@ -143,33 +123,22 @@ export async function getLetter(localId: string): Promise<LetterRow | null> {
   };
 }
 
-/**
- * Crea una carta local (borrador).
- * Devuelve local_id.
- */
 export async function createLetter(childCode: string): Promise<string> {
   const db = await getDb();
   const id = makeLocalId();
   const t = nowISO();
-
   await db.runAsync(
-    `INSERT INTO local_letters (
-        local_id, server_id, child_code, status,
-        text_feelings, text_activities, text_learning, text_share, text_thanks,
-        created_at, updated_at
-     ) VALUES (?, NULL, ?, 'DRAFT', '', '', '', '', '', ?, ?)`,
+    `INSERT INTO local_letters (local_id, child_code, status, created_at, updated_at) 
+     VALUES (?, ?, 'DRAFT', ?, ?)`,
     [id, childCode.trim(), t, t]
   );
-
   return id;
 }
 
 export async function updateLetterTextFeelings(localId: string, text: string) {
   const db = await getDb();
   await db.runAsync(
-    `UPDATE local_letters
-     SET text_feelings = ?, updated_at = ?
-     WHERE local_id = ?`,
+    `UPDATE local_letters SET text_feelings = ?, updated_at = ? WHERE local_id = ?`,
     [text ?? "", nowISO(), localId]
   );
 }

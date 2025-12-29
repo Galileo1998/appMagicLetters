@@ -1,64 +1,54 @@
-// src/services/sync_service.ts
-import { createLetter } from "../repos/letters_repo";
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as lettersRepo from '../repos/letters_repo';
 
-// IMPORTANTE: Cambia esta URL por la IP de tu servidor local (ej: 192.168.1.50) 
-// o tu dominio real. No uses "localhost" si pruebas en un dispositivo físico.
-const BASE_URL = "http://localhost/api"; 
+// ⚠️ IMPORTANTE: Cambia esta IP por la de tu servidor (ej. 192.168.1.X)
+// Usa 10.0.2.2 si estás en el emulador de Android
+const API_URL = 'http://192.168.1.64:8081/magicletter/api/get_assigned_letters.php';
 
-export async function syncAssignedLetters(tecnicoId: number) {
-  try {
-    console.log(`Iniciando sincronización para el técnico: ${tecnicoId}...`);
-    
-    const response = await fetch(`${BASE_URL}/get_assigned_letters.php?tecnico_id=${tecnicoId}`);
-    const assignedLetters = await response.json();
-
-    if (assignedLetters.error) {
-        throw new Error(assignedLetters.error);
-    }
-
-    if (Array.isArray(assignedLetters)) {
-      let nuevas = 0;
-      for (const letter of assignedLetters) {
-        try {
-          // Intentamos insertar en la base de datos local (SQLite)
-          // Usamos la función original de tu letters_repo.ts
-          await createLetter(letter.local_id, letter.child_code);
-          nuevas++;
-        } catch (dbError) {
-          // Si el ID ya existe localmente, el catch evitará que la app se detenga
-          console.log(`La carta ${letter.local_id} ya existe en el móvil.`);
-        }
+export const syncService = {
+  
+  async pullAssignedLetters() {
+    try {
+      // 1. Obtener teléfono del usuario (guardado en Login)
+      const phone = await AsyncStorage.getItem('user_phone');
+      
+      if (!phone) {
+        console.warn("⚠️ No hay teléfono de usuario, omitiendo sync.");
+        return;
       }
-      return { success: true, count: nuevas };
+
+      console.log(`🔄 Sincronizando para: ${phone}...`);
+
+      // 2. Llamar al servidor PHP
+      const response = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: phone }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Error servidor: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (data.error) {
+        console.error("❌ Error API:", data.error);
+        return;
+      }
+
+      // 3. Guardar en SQLite
+      if (Array.isArray(data)) {
+        console.log(`✅ Recibidas ${data.length} cartas.`);
+        for (const item of data) {
+          await lettersRepo.saveSyncedLetter(item);
+        }
+        return data.length;
+      }
+
+    } catch (error) {
+      console.error("❌ Error de red:", error);
+      throw error;
     }
-    
-    return { success: true, count: 0 };
-  } catch (error) {
-    console.error("Error de red o servidor:", error);
-    throw error;
   }
-
-  
-
-  
-}
-
-export async function uploadLetterToServer(payload: any) {
-  try {
-    // IMPORTANTE: Asegúrate de que BASE_URL esté definida arriba
-    const response = await fetch(`${BASE_URL}/upload_data.php`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-
-    if (!response.ok) {
-        throw new Error("Error en la respuesta del servidor");
-    }
-
-    return await response.json();
-  } catch (error) {
-    console.error("Error subiendo datos:", error);
-    throw error;
-  }
-}
+};

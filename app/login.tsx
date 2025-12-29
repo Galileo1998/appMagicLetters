@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage'; // <--- 1. Importante
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
@@ -14,16 +15,27 @@ export default function Login() {
       setErr(null);
       await initDb();
       const p = phone.trim();
+      
+      // Intentamos login (esto verifica si existe en la BD local o remota según tu repo)
       const user = await loginByPhone(p);
 
+      // <--- 2. GUARDAR EL TELÉFONO PARA LA SINCRONIZACIÓN --->
+      // Esto soluciona el error "No hay teléfono de usuario"
+      await AsyncStorage.setItem('user_phone', p);
+
       // ADMIN -> pantalla admin, TECH -> home normal
-      if (user.role === "ADMIN") router.replace("/admin");
-      else router.replace("/");
+      if (user.role === "ADMIN") {
+        router.replace("/admin");
+      } else {
+        router.replace("/");
+      }
+
     } catch (e: any) {
       if (String(e?.message) === "TEL_NO_REGISTRADO") {
         setErr("Teléfono no registrado. Pide al administrador que te cree.");
       } else {
-        setErr("No se pudo iniciar sesión.");
+        setErr("No se pudo iniciar sesión. Verifica tu conexión.");
+        console.error(e);
       }
     }
   }

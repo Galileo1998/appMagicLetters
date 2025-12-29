@@ -1,244 +1,222 @@
-// app/index.tsx
-import { useFocusEffect, useRouter } from "expo-router";
-import React, { useCallback, useMemo, useState } from "react";
-import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
-import { initDb } from "../src/db";
-import { getMe, logout } from "../src/repos/auth_repo";
-import { LetterRow, listLetters } from "../src/repos/letters_repo";
+import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
+import { useRouter } from 'expo-router';
+import React, { useCallback, useState } from 'react';
+import { Alert, FlatList, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
-type Me = {
-  id: string;
-  role: "ADMIN" | "TECH";
-  name: string;
-  phone: string;
-};
+import { initDb } from '../src/db';
+import { getMe, logout, UserRow } from '../src/repos/auth_repo';
+import { LetterRow, listLetters } from '../src/repos/letters_repo';
+import { syncService } from '../src/services/sync_service';
 
-function statusChip(status: string) {
-  const s = (status ?? "").toUpperCase();
-  if (s === "SYNCED") return { bg: "#d1fae5", fg: "#065f46", label: "SYNCED" };
-  if (s === "PENDING_SYNC") return { bg: "#ffedd5", fg: "#9a3412", label: "PENDING" };
-  return { bg: "#fee2e2", fg: "#991b1b", label: "DRAFT" };
-}
-
-function preview(l: LetterRow) {
-  const txt =
-    (l.text_feelings ?? "").trim() ||
-    (l.text_activities ?? "").trim() ||
-    (l.text_learning ?? "").trim() ||
-    (l.text_share ?? "").trim() ||
-    (l.text_thanks ?? "").trim();
-
-  if (txt.length) return txt;
-
-  const parts: string[] = [];
-  if ((l.has_message ?? 0) > 0) parts.push("Mensaje");
-  if ((l.photos_count ?? 0) > 0) parts.push("Fotografías");
-  if ((l.has_drawing ?? 0) > 0) parts.push("Dibujo");
-
-  if (!parts.length) return "Aún no tiene contenido";
-  return `Contiene: ${parts.join(" · ")}`;
-}
-
-function DraftIcons({ item }: { item: LetterRow }) {
-  const hasMessage = (item.has_message ?? 0) > 0;
-  const hasPhotos = (item.photos_count ?? 0) > 0;
-  const hasDrawing = (item.has_drawing ?? 0) > 0;
-
-  if (!hasMessage && !hasPhotos && !hasDrawing) return null;
-
-  return (
-    <View style={styles.iconsRow}>
-      {hasMessage && <Text style={styles.icon}>📝</Text>}
-      {hasPhotos && (
-        <Text style={styles.icon}>
-          📷{(item.photos_count ?? 0) > 1 ? ` ${item.photos_count}` : ""}
-        </Text>
-      )}
-      {hasDrawing && <Text style={styles.icon}>🎨</Text>}
-    </View>
-  );
-}
-
-function fmtDate(iso?: string | null) {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleDateString();
-}
-
-export default function Home() {
+export default function HomeScreen() {
   const router = useRouter();
   const [letters, setLetters] = useState<LetterRow[]>([]);
-  const [ready, setReady] = useState(false);
-  const [me, setMe] = useState<Me | null>(null);
+  const [user, setUser] = useState<UserRow | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
-  const load = useCallback(async () => {
-    await initDb();
-
-    const who = (await getMe()) as any;
-    if (!who) {
-      router.replace("/login");
-      return;
+  const loadData = useCallback(async () => {
+    try {
+      setLoading(true);
+      await initDb();
+      const data = await listLetters({ onlyDrafts: true });
+      setLetters(data);
+      const me = await getMe();
+      setUser(me);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setLoading(false);
     }
-
-    // ✅ Si es ADMIN, no debe estar aquí
-    if (who.role === "ADMIN") {
-      router.replace("/admin");
-      return;
-    }
-
-    setMe({ id: who.id, role: who.role, name: who.name, phone: who.phone });
-
-    const rows = await listLetters();
-    setLetters(rows);
-    setReady(true);
   }, []);
 
   useFocusEffect(
     useCallback(() => {
-      load();
-    }, [load])
+      loadData();
+    }, [loadData])
   );
 
-  const countText = useMemo(
-    () => `Cartas locales (${letters.length})`,
-    [letters.length]
-  );
+  const handleSync = async () => {
+    try {
+      setSyncing(true);
+      const count = await syncService.pullAssignedLetters();
+      if (typeof count === 'number') {
+        Alert.alert("Éxito", `Se descargaron ${count} cartas.`);
+        await loadData(); 
+      } else {
+        Alert.alert("Aviso", "No se encontraron cartas nuevas.");
+      }
+    } catch (e) {
+      Alert.alert("Error", "No se pudo conectar al servidor.");
+    } finally {
+      setSyncing(false);
+    }
+  };
 
-  async function onLogout() {
-    await logout();
-    router.replace("/login");
-  }
+// app/(tabs)/index.tsx
+
+  const handleLogout = () => {
+    Alert.alert(
+      "Cerrar Sesión",
+      "¿Seguro que quieres salir?",
+      [
+        { text: "Cancelar", style: "cancel" },
+        { 
+          text: "Salir", 
+          style: 'destructive',
+          onPress: async () => {
+            try {
+             
+              
+              await logout(); // Solo borra la sesión de la DB (mantiene las cartas)
+              
+              if (router.canGoBack()) router.dismissAll();
+              router.replace('/login');
+            } catch (error) {
+              console.error("Error al salir:", error);
+              router.replace('/login');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'DRAFT': return '#ffc107';      
+      case 'ASSIGNED': return '#17a2b8';   
+      case 'PENDING_SYNC': return '#fd7e14'; 
+      case 'SYNCED': return '#28a745';     
+      default: return '#6c757d';
+    }
+  };
+
+  const renderItem = ({ item }: { item: LetterRow }) => (
+    <TouchableOpacity 
+      style={styles.card}
+      onPress={() => router.push(`/letter/${item.local_id}`)}
+    >
+      <View style={styles.cardHeader}>
+        <Text style={styles.slipText}>
+          {item.slip_id ? `#${item.slip_id}` : 'Borrador'}
+        </Text>
+        <View style={[styles.badge, { backgroundColor: getStatusColor(item.status) }]}>
+          <Text style={styles.badgeText}>{item.status}</Text>
+        </View>
+      </View>
+
+      <Text style={styles.childName}>
+        {item.child_name || `Niño ${item.child_code}`}
+      </Text>
+      
+      <Text style={styles.villageText}>
+        📍 {item.village || 'Sin comunidad'}
+      </Text>
+
+      {item.due_date && (
+        <Text style={styles.dateText}>📅 Límite: {item.due_date}</Text>
+      )}
+
+      {/* --- ICONOS DE PROGRESO (RECUPERADOS) --- */}
+      <View style={styles.progressRow}>
+        {/* Mensaje */}
+        <View style={styles.progressItem}>
+          <Ionicons name="chatbox-ellipses" size={16} color={item.has_message ? "#28a745" : "#ccc"} />
+          <Text style={{ fontSize:10, color: item.has_message ? "#28a745" : "#999" }}>
+             {item.has_message ? "Listo" : "Texto"}
+          </Text>
+        </View>
+
+        {/* Fotos */}
+        <View style={styles.progressItem}>
+          <Ionicons name="images" size={16} color={(item.photos_count || 0) > 0 ? "#28a745" : "#ccc"} />
+          <Text style={{ fontSize:10, color: (item.photos_count || 0) > 0 ? "#28a745" : "#999" }}>
+             {item.photos_count || 0} Fotos
+          </Text>
+        </View>
+
+        {/* Dibujo */}
+        <View style={styles.progressItem}>
+          <Ionicons name="brush" size={16} color={item.has_drawing ? "#28a745" : "#ccc"} />
+          <Text style={{ fontSize:10, color: item.has_drawing ? "#28a745" : "#999" }}>
+             {item.has_drawing ? "Listo" : "Dibujo"}
+          </Text>
+        </View>
+      </View>
+      {/* -------------------------------------- */}
+
+    </TouchableOpacity>
+  );
 
   return (
     <View style={styles.container}>
-      {/* ✅ Header: Bienvenido + Nombre + Salir */}
-      <View style={styles.topHeader}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.welcome}>Bienvenido{me?.name ? "," : ""}</Text>
-          <Text style={styles.name}>{me?.name ?? ""}</Text>
-          {!!me?.phone && <Text style={styles.phone}>Tel: {me.phone}</Text>}
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.welcomeTitle}>
+            Hola, {user?.name ? user.name.split(' ')[0] : 'Técnico'} 👋
+          </Text>
+          <Text style={styles.phoneSubtitle}>
+            📞 {user?.phone || '...'}
+          </Text>
         </View>
-
-        <Pressable onPress={onLogout} style={styles.logoutBtn}>
-          <Text style={styles.logoutText}>Salir</Text>
-        </Pressable>
+        <View style={styles.headerIcons}>
+          <TouchableOpacity onPress={handleSync} disabled={syncing} style={styles.iconBtn}>
+            {syncing ? <Text style={{fontSize:10}}>...</Text> : <Ionicons name="cloud-download-outline" size={26} color="#1e62d0" />}
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleLogout} style={styles.iconBtn}>
+            <Ionicons name="log-out-outline" size={26} color="#dc3545" />
+          </TouchableOpacity>
+        </View>
       </View>
-
-      <Pressable style={styles.btnPrimary} onPress={() => router.push("/create")}>
-        <Text style={styles.btnText}>Crear nueva carta</Text>
-      </Pressable>
-
-      <Text style={styles.section}>{countText}</Text>
 
       <FlatList
         data={letters}
-        keyExtractor={(l) => l.local_id}
-        contentContainerStyle={{ paddingBottom: 18 }}
-        refreshing={!ready}
-        onRefresh={load}
+        keyExtractor={(item) => item.local_id}
+        renderItem={renderItem}
+        contentContainerStyle={styles.listContent}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={loadData} />}
         ListEmptyComponent={
-          <View style={styles.empty}>
-            <Text style={styles.emptyTitle}>Aún no hay cartas</Text>
-            <Text style={styles.emptySub}>
-              Toca “Crear nueva carta” para empezar.
-            </Text>
+          <View style={styles.emptyState}>
+            <Text style={{color:'#888'}}>No tienes cartas asignadas.</Text>
+            <Text style={{color:'#ccc', fontSize:12}}>Pulsa la nube para descargar.</Text>
           </View>
         }
-        renderItem={({ item }) => {
-          const chip = statusChip(item.status);
-          const date = fmtDate(item.updated_at ?? item.created_at);
-
-          return (
-            <Pressable
-              style={styles.card}
-              onPress={() => router.push(`/letter/${item.local_id}/options`)}
-            >
-              <View style={styles.cardHeader}>
-                <Text style={styles.cardTitle}>{item.child_code}</Text>
-
-                <View style={[styles.chip, { backgroundColor: chip.bg }]}>
-                  <Text style={[styles.chipText, { color: chip.fg }]}>
-                    {chip.label}
-                  </Text>
-                </View>
-              </View>
-
-              <Text style={styles.cardMeta}>
-                {date ? `Actualizado: ${date}` : ""}
-              </Text>
-
-              <Text numberOfLines={3} style={styles.cardPreview}>
-                {preview(item)}
-              </Text>
-
-              <DraftIcons item={item} />
-            </Pressable>
-          );
-        }}
       />
+      
+      <TouchableOpacity style={styles.fab} onPress={() => router.push("/create")}>
+        <Ionicons name="add" size={30} color="#fff" />
+      </TouchableOpacity>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 12 },
-
-  topHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 10,
-    padding: 12,
-    borderRadius: 16,
-    backgroundColor: "white",
-    elevation: 2,
+  container: { flex: 1, backgroundColor: '#f4f7f6' },
+  header: { 
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', 
+    paddingHorizontal: 20, paddingBottom: 15, paddingTop: 60, 
+    backgroundColor: 'white', borderBottomWidth: 1, borderBottomColor: '#eee'
   },
-  welcome: { fontSize: 13, color: "#555", fontWeight: "700" },
-  name: { fontSize: 18, fontWeight: "900", marginTop: 2 },
-  phone: { marginTop: 2, fontSize: 12, color: "#666" },
+  welcomeTitle: { fontSize: 20, fontWeight: '900', color: '#333' },
+  phoneSubtitle: { fontSize: 13, color: '#666', marginTop: 2, fontWeight: '500' },
+  headerIcons: { flexDirection: 'row', gap: 15 },
+  iconBtn: { padding: 5 },
+  listContent: { padding: 15 },
+  card: { backgroundColor: 'white', padding: 15, borderRadius: 12, marginBottom: 12, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 5, elevation: 2 },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 },
+  slipText: { fontWeight: 'bold', color: '#888', fontSize: 12 },
+  badge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10 },
+  badgeText: { color: 'white', fontSize: 10, fontWeight: 'bold' },
+  childName: { fontSize: 18, fontWeight: 'bold', color: '#222', marginBottom: 2 },
+  villageText: { color: '#555', fontSize: 14 },
+  dateText: { color: '#d9534f', fontSize: 12, fontWeight: 'bold', marginTop: 5 },
+  
+  // Estilos Nuevos para la barra de iconos
+  progressRow: { flexDirection: 'row', marginTop: 15, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#f0f0f0', justifyContent: 'space-around' },
+  progressItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
 
-  logoutBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 12,
-    backgroundColor: "#eee",
-    marginLeft: 10,
-  },
-  logoutText: { fontWeight: "900" },
-
-  btnPrimary: {
-    backgroundColor: "#2b7",
-    paddingVertical: 14,
-    paddingHorizontal: 14,
-    borderRadius: 14,
-    alignItems: "center",
-  },
-  btnText: { color: "white", fontWeight: "800", fontSize: 15 },
-
-  section: { marginTop: 14, marginBottom: 8, fontSize: 16, fontWeight: "800" },
-
-  card: {
-    backgroundColor: "white",
-    padding: 14,
-    borderRadius: 18,
-    marginBottom: 12,
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    elevation: 2,
-  },
-  cardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  cardTitle: { fontSize: 17, fontWeight: "900" },
-
-  chip: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999 },
-  chipText: { fontSize: 12, fontWeight: "900", letterSpacing: 0.4 },
-
-  cardMeta: { marginTop: 6, fontSize: 12, color: "#666" },
-  cardPreview: { marginTop: 10, fontSize: 14, color: "#333", lineHeight: 19 },
-
-  iconsRow: { flexDirection: "row", marginTop: 8, alignItems: "center" },
-  icon: { fontSize: 16, marginRight: 10 },
-
-  empty: { marginTop: 40, padding: 18, backgroundColor: "#f6f6f6", borderRadius: 16 },
-  emptyTitle: { fontSize: 16, fontWeight: "900" },
-  emptySub: { marginTop: 6, color: "#555" },
+  emptyState: { alignItems: 'center', marginTop: 50 },
+  fab: { position: 'absolute', right: 20, bottom: 30, backgroundColor: '#1e62d0', width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center', elevation: 5 }
 });
