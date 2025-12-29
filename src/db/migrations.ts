@@ -331,5 +331,57 @@ export async function migrate(db: SQLite.SQLiteDatabase) {
     // throw new Error("FK check failed");
   }
 
+  // 1) USERS (admin + technicians)
+await db.execAsync(`
+  CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    role TEXT NOT NULL,                  -- ADMIN | TECH
+    name TEXT NOT NULL,
+    email TEXT,
+    phone TEXT NOT NULL UNIQUE,
+    is_protected INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+`);
+
+await db.execAsync(`
+  CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
+`);
+
+// 2) SESSION (una sola fila)
+await db.execAsync(`
+  CREATE TABLE IF NOT EXISTS session (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    user_id TEXT NOT NULL,
+    logged_in_at TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  );
+`);
+
+// 3) Asegurar columna assigned_user_id en local_letters
+const cols = await db.getAllAsync<{ name: string }>(`PRAGMA table_info(local_letters);`);
+const hasAssigned = cols.some(c => c.name === "assigned_user_id");
+if (!hasAssigned) {
+  await db.execAsync(`ALTER TABLE local_letters ADD COLUMN assigned_user_id TEXT;`);
+}
+
+// 4) Seed del ADMIN (nunca se borra)
+const adminId = "ADMIN_FIXED";
+const adminEmail = "accionhonduras.org";
+const adminPhone = "08019005012310";
+
+await db.execAsync(`
+  INSERT OR IGNORE INTO users (id, role, name, email, phone, is_protected, created_at, updated_at)
+  VALUES ('${adminId}', 'ADMIN', 'Administrador', '${adminEmail}', '${adminPhone}', 1, datetime('now'), datetime('now'));
+`);
+
+await db.execAsync(`
+  UPDATE users
+  SET role='ADMIN', name='Administrador', email='${adminEmail}', phone='${adminPhone}', is_protected=1, updated_at=datetime('now')
+  WHERE id='${adminId}';
+`);
+
+
   console.log("[DB] migrate() OK");
 }
