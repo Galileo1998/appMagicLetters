@@ -37,23 +37,36 @@ export default function HomeScreen() {
     }, [loadData])
   );
 
+// app/(tabs)/index.tsx
+
+  // ... imports ...
+
   const handleSync = async () => {
     try {
       setSyncing(true);
-      const count = await syncService.pullAssignedLetters();
-      if (typeof count === 'number') {
-        Alert.alert("Éxito", `Se descargaron ${count} cartas.`);
-        await loadData(); 
-      } else {
-        Alert.alert("Aviso", "No se encontraron cartas nuevas.");
-      }
+      
+      // 1. PRIMERO SUBIMOS (Push)
+      const uploaded = await syncService.pushPendingLetters();
+      
+      // 2. LUEGO DESCARGAMOS (Pull)
+      const downloaded = await syncService.pullAssignedLetters();
+
+      let msg = "";
+      if (uploaded > 0) msg += `Se enviaron ${uploaded} cartas. `;
+      if (typeof downloaded === 'number') msg += `Se recibieron ${downloaded} cartas.`;
+      
+      if (!msg) msg = "Todo está actualizado.";
+
+      Alert.alert("Sincronización", msg);
+      await loadData(); // Recargar la lista visual
+
     } catch (e) {
-      Alert.alert("Error", "No se pudo conectar al servidor.");
+      console.error(e);
+      Alert.alert("Error", "Fallo en la conexión. Revisa tu internet o la IP del servidor.");
     } finally {
       setSyncing(false);
     }
   };
-
 // app/(tabs)/index.tsx
 
   const handleLogout = () => {

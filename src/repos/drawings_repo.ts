@@ -1,53 +1,49 @@
-// src/repos/drawings_repo.ts
 import { getDb } from "../db";
 
 export type Stroke = {
-  d: string;
+  path: string;
   color: string;
   width: number;
 };
 
-function assertId(letterId: string) {
-  if (!letterId || typeof letterId !== "string") {
-    throw new Error(`letterId inválido: ${String(letterId)}`);
-  }
-}
-
-export async function getDrawing(letterId: string): Promise<Stroke[] | null> {
-  assertId(letterId);
+// Guardar un dibujo (Ruta del archivo)
+export async function saveDrawingPath(localLetterId: string, filePath: string) {
   const db = await getDb();
-  const row = await db.getFirstAsync<{ svg_xml: string | null }>(
-    `SELECT svg_xml FROM drawings WHERE letter_id = ? LIMIT 1;`,
-    [letterId]
-  );
+  const id = `D${Date.now()}`;
+  const now = new Date().toISOString();
 
-  if (!row?.svg_xml) return null;
-
-  try {
-    const parsed = JSON.parse(row.svg_xml) as Stroke[];
-    if (!Array.isArray(parsed)) return null;
-    return parsed.filter(Boolean);
-  } catch {
-    return null;
-  }
-}
-
-export async function upsertDrawing(letterId: string, strokes: Stroke[]) {
-  assertId(letterId);
-  const db = await getDb();
-
+  // 1. Borramos si ya existía uno previo para esa carta (para evitar duplicados)
   await db.runAsync(
-    `INSERT INTO drawings (letter_id, svg_xml, updated_at)
-     VALUES (?, ?, datetime('now'))
-     ON CONFLICT(letter_id) DO UPDATE SET
-       svg_xml = excluded.svg_xml,
-       updated_at = datetime('now');`,
-    [letterId, JSON.stringify(strokes ?? [])]
+    `DELETE FROM local_drawings WHERE local_letter_id = ?`,
+    [localLetterId]
+  );
+
+  // 2. Insertamos el nuevo en la tabla CORRECTA 'local_drawings'
+  await db.runAsync(
+    `INSERT INTO local_drawings (id, local_letter_id, file_path, created_at)
+     VALUES (?, ?, ?, ?)`,
+    [id, localLetterId, filePath, now]
   );
 }
 
-export async function clearDrawing(letterId: string) {
-  assertId(letterId);
+// Obtener el dibujo (Si existe)
+export async function getDrawing(localLetterId: string): Promise<string | null> {
   const db = await getDb();
-  await db.runAsync(`DELETE FROM drawings WHERE letter_id = ?;`, [letterId]);
+  
+  // Consultamos la tabla CORRECTA 'local_drawings'
+  const row = await db.getFirstAsync<{ file_path: string }>(
+    `SELECT file_path FROM local_drawings WHERE local_letter_id = ?`,
+    [localLetterId]
+  );
+
+  return row ? row.file_path : null;
+}
+
+// Borrar dibujo
+export async function deleteDrawing(localLetterId: string) {
+  const db = await getDb();
+  await db.runAsync(
+    `DELETE FROM local_drawings WHERE local_letter_id = ?`,
+    [localLetterId]
+  );
 }

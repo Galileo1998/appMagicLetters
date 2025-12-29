@@ -1,321 +1,172 @@
-// app/letter/[letterId]/photo.tsx
-import { CameraView, useCameraPermissions } from "expo-camera";
-import * as FileSystem from "expo-file-system/legacy";
-import { router, useLocalSearchParams } from "expo-router";
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Image, Pressable, StyleSheet, Text, View } from "react-native";
-
-import { initDb } from "../../../src/db";
-import { addPhoto, deletePhoto, listPhotos, type PhotoRow } from "../../../src/repos/photos_repo";
-
-async function ensurePhotosDir(): Promise<string> {
-  const base = FileSystem.documentDirectory ?? FileSystem.cacheDirectory;
-  if (!base) throw new Error("documentDirectory/cacheDirectory no disponible");
-
-  const dir = base + "scip_cartas/photos/";
-  try {
-    await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
-  } catch (e: any) {
-    // si existe, ok
-  }
-  return dir;
-}
+import { Ionicons } from '@expo/vector-icons';
+import { CameraView, useCameraPermissions } from 'expo-camera';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useEffect, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  Button,
+  Image,
+  ScrollView,
+  StyleSheet, Text, TouchableOpacity, View
+} from 'react-native';
+import { addPhoto, deletePhoto, listPhotos, PhotoRow } from '../../../src/repos/photos_repo';
 
 export default function PhotoScreen() {
   const { letterId } = useLocalSearchParams<{ letterId: string }>();
-  const id = useMemo(() => String(letterId ?? ""), [letterId]);
-
-  const cameraRef = useRef<CameraView>(null);
+  const router = useRouter();
+  
   const [permission, requestPermission] = useCameraPermissions();
-
-  const [loading, setLoading] = useState(true);
+  const cameraRef = useRef<CameraView>(null);
+  
   const [photos, setPhotos] = useState<PhotoRow[]>([]);
-  const [tempUri, setTempUri] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [previewUri, setPreviewUri] = useState<string | null>(null);
-
-  async function reload() {
-    await initDb();
-    const rows = await listPhotos(id);
-    setPhotos(rows);
-    setPreviewUri(rows[0]?.photo_uri ?? null);
-  }
+  const [showCamera, setShowCamera] = useState(false); // 👈 Controla si vemos galería o cámara
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    (async () => {
-      try {
-        if (!id) return;
-        await reload();
-      } catch (e: any) {
-        console.error(e);
-        Alert.alert("Error", e?.message ?? "No se pudo cargar fotos.");
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [id]);
+    loadPhotos();
+  }, []);
 
-  async function onTakePhoto() {
+  async function loadPhotos() {
+    if(!letterId) return;
     try {
-      if (!cameraRef.current) {
-        Alert.alert("Cámara", "La cámara no está lista todavía.");
-        return;
-      }
-      if (photos.length >= 3) {
-        Alert.alert("Límite", "Ya tienes 3 fotos guardadas.");
-        return;
-      }
-
-      const pic = await cameraRef.current.takePictureAsync({
-        quality: 0.9,
-        skipProcessing: true,
-      });
-
-      if (!pic?.uri) throw new Error("No se obtuvo uri de la foto");
-
-      const dir = await ensurePhotosDir();
-      const target = dir + `${id}_${Date.now()}.jpg`;
-      await FileSystem.copyAsync({ from: pic.uri, to: target });
-
-      setTempUri(target);
-    } catch (e: any) {
-      console.error(e);
-      Alert.alert("Error", e?.message ?? "No se pudo tomar la foto.");
-    }
+        const list = await listPhotos(letterId);
+        setPhotos(list);
+    } catch(e) { console.error(e); }
   }
 
-  async function onSave() {
-    if (!tempUri) return;
-    try {
-      setSaving(true);
-      await addPhoto(id, tempUri);
-      setTempUri(null);
-      await reload();
-      Alert.alert("Listo", "Foto guardada.");
-    } catch (e: any) {
-      console.error(e);
-      Alert.alert("Error", e?.message ?? "No se pudo guardar la foto.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function onDelete(slot: 1 | 2 | 3) {
-    try {
-      await deletePhoto(id, slot);
-      await reload();
-    } catch (e: any) {
-      Alert.alert("Error", e?.message ?? "No se pudo eliminar.");
-    }
-  }
-
-  if (!id) {
+  // --- MODO: GALERÍA (Vista Principal) ---
+  if (!showCamera) {
     return (
-      <View style={styles.center}>
-        <Text style={styles.err}>Falta letterId en la ruta.</Text>
+      <View style={styles.container}>
+        {/* Header */}
+        <View style={styles.header}>
+            <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+                <Ionicons name="arrow-back" size={24} color="#333" />
+            </TouchableOpacity>
+            <Text style={styles.title}>Fotos ({photos.length}/3)</Text>
+            <View style={{width:30}}/>
+        </View>
+
+        <ScrollView contentContainerStyle={styles.galleryContent}>
+            {photos.length === 0 && (
+                <View style={styles.emptyState}>
+                    <Ionicons name="images-outline" size={60} color="#ccc" />
+                    <Text style={{color:'#888', marginTop:10}}>No hay fotos aún</Text>
+                </View>
+            )}
+
+            <View style={styles.grid}>
+                {photos.map((p, index) => (
+                    <View key={p.id} style={styles.photoCard}>
+                        <Image source={{ uri: p.file_path }} style={styles.thumb} />
+                        <View style={styles.photoBadge}><Text style={styles.badgeText}>{index + 1}</Text></View>
+                        {/* Botón Borrar */}
+                        <TouchableOpacity 
+                            style={styles.deleteBtn}
+                            onPress={() => {
+                                Alert.alert("Borrar", "¿Eliminar esta foto?", [
+                                    { text: "Cancelar", style: 'cancel'},
+                                    { text: "Borrar", style: 'destructive', onPress: async () => {
+                                        await deletePhoto(letterId!, p.slot);
+                                        loadPhotos();
+                                    }}
+                                ]);
+                            }}
+                        >
+                            <Ionicons name="trash" size={18} color="white" />
+                        </TouchableOpacity>
+                    </View>
+                ))}
+            </View>
+        </ScrollView>
+
+        {/* Botón Flotante para Abrir Cámara (Solo si hay espacio) */}
+        {photos.length < 3 ? (
+            <TouchableOpacity style={styles.fab} onPress={() => setShowCamera(true)}>
+                <Ionicons name="camera" size={30} color="white" />
+                <Text style={styles.fabText}>TOMAR FOTO</Text>
+            </TouchableOpacity>
+        ) : (
+            <View style={styles.limitBanner}>
+                <Text style={{color:'white', fontWeight:'bold'}}>Límite de 3 fotos alcanzado</Text>
+            </View>
+        )}
       </View>
     );
   }
 
-  if (!permission) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator />
-        <Text>Cargando permisos...</Text>
-      </View>
-    );
-  }
-
+  // --- MODO: CÁMARA (Solo si pulsan el botón) ---
+  if (!permission) return <View />;
   if (!permission.granted) {
     return (
-      <View style={styles.center}>
-        <Text style={styles.title}>Permiso de cámara</Text>
-        <Text style={styles.sub}>Necesitamos permiso para tomar fotos.</Text>
-        <Pressable style={styles.primaryBtn} onPress={requestPermission}>
-          <Text style={styles.primaryText}>Dar permiso</Text>
-        </Pressable>
+      <View style={styles.container}>
+        <Text style={{ textAlign: 'center', marginTop: 50 }}>Necesitamos permiso para usar la cámara</Text>
+        <Button onPress={requestPermission} title="Dar permiso" />
       </View>
     );
   }
 
-  if (loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator />
-        <Text>Cargando...</Text>
-      </View>
-    );
+  async function takePicture() {
+    if (cameraRef.current && letterId) {
+        setLoading(true);
+        try {
+            const photo = await cameraRef.current.takePictureAsync({ quality: 0.7 });
+            if (photo) {
+                await addPhoto(letterId, photo.uri);
+                setShowCamera(false); // Volver a galería automáticamente
+                loadPhotos(); 
+            }
+        } catch (e) {
+            Alert.alert("Error", "No se pudo guardar la foto");
+        } finally {
+            setLoading(false);
+        }
+    }
   }
-
-  const showingCamera = !previewUri && !tempUri;
 
   return (
     <View style={styles.container}>
-      {/* TOP BAR */}
-      <View style={styles.topBar}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backTxt}>←</Text>
-        </Pressable>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.topTitle}>Fotos de la carta</Text>
-          <Text style={styles.topSub}>ID: {id} • {photos.length}/3</Text>
+      <CameraView style={styles.camera} ref={cameraRef}>
+        <View style={styles.cameraControls}>
+            <TouchableOpacity style={styles.closeCamera} onPress={() => setShowCamera(false)}>
+                <Text style={{color:'white', fontWeight:'bold'}}>CANCELAR</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity style={styles.shutterBtn} onPress={takePicture} disabled={loading}>
+                {loading ? <ActivityIndicator color="black"/> : <View style={styles.shutterInner} />}
+            </TouchableOpacity>
+
+            <View style={{width: 70}} />
         </View>
-      </View>
-
-      {/* CAMERA FULLSCREEN */}
-      {showingCamera ? (
-        <View style={styles.cameraWrap}>
-          <CameraView ref={cameraRef} style={styles.camera} facing="back" />
-          <View style={styles.cameraControls}>
-            <Pressable style={styles.secondaryBtn} onPress={() => router.back()}>
-              <Text style={styles.secondaryText}>Atrás</Text>
-            </Pressable>
-            <Pressable style={styles.primaryBtn} onPress={onTakePhoto}>
-              <Text style={styles.primaryText}>Tomar foto</Text>
-            </Pressable>
-          </View>
-        </View>
-      ) : (
-        <View style={styles.previewWrap}>
-          {/* PREVIEW (temp o seleccionada) */}
-          <Image
-            source={{ uri: tempUri ?? previewUri ?? undefined }}
-            style={styles.preview}
-            resizeMode="contain"
-          />
-
-          {/* THUMBNAILS */}
-          <View style={styles.thumbsRow}>
-            {photos.map(p => (
-              <Pressable key={p.id} onPress={() => setPreviewUri(p.photo_uri)} style={styles.thumbWrap}>
-                <Image source={{ uri: p.photo_uri }} style={styles.thumb} />
-                <Pressable onPress={() => onDelete(p.slot)} style={styles.delBadge}>
-                  <Text style={styles.delTxt}>✕</Text>
-                </Pressable>
-                <Text style={styles.slotTxt}>{p.slot}</Text>
-              </Pressable>
-            ))}
-          </View>
-
-          {/* ACTIONS */}
-          <View style={styles.row}>
-            {tempUri ? (
-              <>
-                <Pressable style={styles.secondaryBtn} onPress={() => setTempUri(null)} disabled={saving}>
-                  <Text style={styles.secondaryText}>Retomar</Text>
-                </Pressable>
-                <Pressable style={[styles.primaryBtn, saving && { opacity: 0.6 }]} onPress={onSave} disabled={saving}>
-                  <Text style={styles.primaryText}>{saving ? "Guardando..." : "Guardar"}</Text>
-                </Pressable>
-              </>
-            ) : (
-              <>
-                <Pressable
-                  style={[styles.primaryBtn, photos.length >= 3 && { opacity: 0.5 }]}
-                  onPress={() => {
-                    if (photos.length >= 3) return;
-                    setPreviewUri(null); // vuelve a cámara fullscreen
-                  }}
-                  disabled={photos.length >= 3}
-                >
-                  <Text style={styles.primaryText}>Tomar otra</Text>
-                </Pressable>
-
-                <Pressable style={styles.secondaryBtn} onPress={() => router.back()}>
-                  <Text style={styles.secondaryText}>Volver</Text>
-                </Pressable>
-              </>
-            )}
-          </View>
-
-          {!previewUri && photos.length === 0 && !tempUri ? (
-            <Text style={{ textAlign: "center", marginTop: 10, color: "#666" }}>
-              Aún no hay foto guardada
-            </Text>
-          ) : null}
-        </View>
-      )}
+      </CameraView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff" },
+  container: { flex: 1, backgroundColor: '#f4f6f9' },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems:'center', padding: 20, paddingTop: 50, backgroundColor: 'white', elevation:2 },
+  backBtn: { padding: 5 },
+  title: { fontSize: 18, fontWeight: 'bold' },
+  
+  galleryContent: { padding: 20 },
+  emptyState: { alignItems: 'center', marginTop: 100 },
+  
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  photoCard: { width: '48%', aspectRatio: 1, borderRadius: 10, overflow: 'hidden', position: 'relative', elevation: 3, backgroundColor:'white' },
+  thumb: { width: '100%', height: '100%' },
+  photoBadge: { position: 'absolute', top: 5, left: 5, backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 10, width: 24, height: 24, justifyContent:'center', alignItems:'center' },
+  badgeText: { color: 'white', fontWeight: 'bold', fontSize: 12 },
+  deleteBtn: { position: 'absolute', bottom: 5, right: 5, backgroundColor: '#d32f2f', padding: 8, borderRadius: 20 },
 
-  topBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    paddingHorizontal: 12,
-    paddingTop: 10,
-    paddingBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: "#eee",
-  },
-  backBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#f2f2f2",
-  },
-  backTxt: { fontSize: 20, fontWeight: "900" },
-  topTitle: { fontSize: 16, fontWeight: "900", color: "#111" },
-  topSub: { marginTop: 2, fontSize: 12, color: "#666" },
+  fab: { position: 'absolute', bottom: 30, alignSelf: 'center', backgroundColor: '#1e62d0', flexDirection: 'row', alignItems: 'center', paddingVertical: 15, paddingHorizontal: 30, borderRadius: 30, elevation: 5 },
+  fabText: { color: 'white', fontWeight: 'bold', marginLeft: 10 },
+  limitBanner: { position: 'absolute', bottom: 0, width: '100%', backgroundColor: '#28a745', padding: 15, alignItems: 'center' },
 
-  cameraWrap: { flex: 1 },
-  camera: { flex: 1, backgroundColor: "#000" },
-  cameraControls: {
-    position: "absolute",
-    bottom: 16,
-    left: 12,
-    right: 12,
-    flexDirection: "row",
-    gap: 12,
-    justifyContent: "space-between",
-  },
-
-  previewWrap: { flex: 1, padding: 12 },
-  preview: { flex: 1, width: "100%", backgroundColor: "#f4f4f4", borderRadius: 12 },
-
-  thumbsRow: { flexDirection: "row", gap: 10, marginTop: 10 },
-  thumbWrap: { width: 76, height: 76, borderRadius: 12, overflow: "hidden", position: "relative" },
-  thumb: { width: "100%", height: "100%" },
-  delBadge: {
-    position: "absolute",
-    top: 6,
-    right: 6,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: "rgba(0,0,0,0.6)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  delTxt: { color: "white", fontWeight: "900", fontSize: 12 },
-  slotTxt: {
-    position: "absolute",
-    bottom: 6,
-    left: 6,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 8,
-    backgroundColor: "rgba(0,0,0,0.6)",
-    color: "white",
-    fontWeight: "900",
-    fontSize: 12,
-  },
-
-  row: { flexDirection: "row", gap: 12, paddingTop: 12, justifyContent: "center" },
-
-  primaryBtn: { backgroundColor: "#1e88e5", paddingVertical: 12, paddingHorizontal: 16, borderRadius: 10, minWidth: 140, alignItems: "center" },
-  primaryText: { color: "#fff", fontWeight: "900" },
-  secondaryBtn: { backgroundColor: "#eaeaea", paddingVertical: 12, paddingHorizontal: 16, borderRadius: 10, minWidth: 140, alignItems: "center" },
-  secondaryText: { color: "#111", fontWeight: "900" },
-
-  center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 16 },
-  title: { fontSize: 18, fontWeight: "900" },
-  sub: { marginTop: 6, color: "#666", textAlign: "center" },
-  err: { color: "#b00020", fontWeight: "900" },
+  camera: { flex: 1 },
+  cameraControls: { position: 'absolute', bottom: 0, width: '100%', height: 120, backgroundColor: 'rgba(0,0,0,0.5)', flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center' },
+  shutterBtn: { width: 70, height: 70, borderRadius: 35, backgroundColor: 'white', justifyContent: 'center', alignItems: 'center' },
+  shutterInner: { width: 60, height: 60, borderRadius: 30, borderWidth: 2, borderColor: 'black' },
+  closeCamera: { padding: 10 }
 });

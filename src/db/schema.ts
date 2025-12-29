@@ -1,76 +1,66 @@
-// src/db/schema.ts
 export const SQLITE_SCHEMA = `
 PRAGMA foreign_keys = ON;
 
--- =====================================================
--- CARTAS
--- =====================================================
-CREATE TABLE IF NOT EXISTS letters (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  local_id TEXT UNIQUE NOT NULL,
+CREATE TABLE IF NOT EXISTS users (
+  id TEXT PRIMARY KEY,
+  role TEXT NOT NULL,
+  name TEXT NOT NULL,
+  email TEXT NULL,
+  phone TEXT NOT NULL UNIQUE,
+  is_protected INTEGER DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS session (
+  id INTEGER PRIMARY KEY DEFAULT 1,
+  user_id TEXT NOT NULL,
+  logged_in_at TEXT NOT NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS local_letters (
+  local_id TEXT PRIMARY KEY,
+  server_id TEXT NULL,
+  slip_id TEXT NULL,
   child_code TEXT NOT NULL,
-  status TEXT DEFAULT 'DRAFT',
-  text_feelings TEXT,
+  child_name TEXT NULL,
+  village TEXT NULL,
+  contact_name TEXT NULL,
+  due_date TEXT NULL,
+  status TEXT NOT NULL,
+  message_content TEXT, -- ✅ Solo esta columna de texto
   created_at TEXT NOT NULL,
-  updated_at TEXT
+  updated_at TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_letters_child_code
-  ON letters(child_code);
-
--- =====================================================
--- DIBUJOS
--- =====================================================
-CREATE TABLE IF NOT EXISTS drawings (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  letter_id TEXT NOT NULL,
-  svg_xml TEXT,
-  created_at TEXT DEFAULT (datetime('now')),
-  updated_at TEXT DEFAULT (datetime('now')),
-  FOREIGN KEY (letter_id)
-    REFERENCES letters(local_id)
-    ON DELETE CASCADE
-);
-
-CREATE UNIQUE INDEX IF NOT EXISTS ux_drawings_letter_id
-  ON drawings(letter_id);
-
--- =====================================================
--- FOTOS (hasta 3 por carta)
--- =====================================================
 CREATE TABLE IF NOT EXISTS photos (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   letter_id TEXT NOT NULL,
-  slot INTEGER NOT NULL,               -- 1,2,3
-  photo_uri TEXT NOT NULL,
-  created_at TEXT DEFAULT (datetime('now')),
-  updated_at TEXT DEFAULT (datetime('now')),
-  FOREIGN KEY (letter_id)
-    REFERENCES letters(local_id)
-    ON DELETE CASCADE,
-  CONSTRAINT ck_photos_slot CHECK (slot IN (1,2,3))
+  slot INTEGER NOT NULL,
+  file_path TEXT NOT NULL, 
+  created_at TEXT NOT NULL,
+  updated_at TEXT NULL,
+  FOREIGN KEY (letter_id) REFERENCES local_letters(local_id) ON DELETE CASCADE
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS ux_photos_letter_slot
-  ON photos(letter_id, slot);
+CREATE TABLE IF NOT EXISTS local_drawings (
+  id TEXT PRIMARY KEY,
+  local_letter_id TEXT NOT NULL,
+  file_path TEXT NOT NULL,
+  sha256 TEXT NULL,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (local_letter_id) REFERENCES local_letters(local_id) ON DELETE CASCADE
+);
 
-CREATE INDEX IF NOT EXISTS idx_photos_letter_id
-  ON photos(letter_id);
-
--- =====================================================
--- MENSAJES
--- =====================================================
-CREATE TABLE IF NOT EXISTS messages (
+CREATE TABLE IF NOT EXISTS sync_queue (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  letter_id TEXT NOT NULL,
-  text TEXT NOT NULL,
-  created_at TEXT DEFAULT (datetime('now')),
-  updated_at TEXT DEFAULT (datetime('now')),
-  FOREIGN KEY (letter_id)
-    REFERENCES letters(local_id)
-    ON DELETE CASCADE
+  entity_type TEXT NOT NULL,
+  entity_id TEXT NOT NULL,
+  action TEXT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT NULL,
+  next_retry_at TEXT NULL,
+  created_at TEXT NOT NULL
 );
-
-CREATE UNIQUE INDEX IF NOT EXISTS ux_messages_letter_id
-  ON messages(letter_id);
 `;
