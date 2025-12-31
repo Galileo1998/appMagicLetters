@@ -1,8 +1,9 @@
+// src/repos/letters_repo.ts
 import { getDb } from "../db";
 
-export function makeLocalId() {
-  return `L${Date.now()}_${Math.floor(Math.random() * 1e9)}`;
-}
+// ---------------------------------------------------------
+// 1. TIPOS Y UTILIDADES (Necesarios para que no de error)
+// ---------------------------------------------------------
 
 export type LetterRow = {
   local_id: string;
@@ -13,40 +14,50 @@ export type LetterRow = {
   village: string | null;
   contact_name: string | null;
   due_date: string | null;
-  // Estados permitidos
   status: "DRAFT" | "PENDING_SYNC" | "SYNCED" | "ASSIGNED" | "RETURNED" | "COMPLETADO";
   message_content: string | null;
-  return_reason?: string | null; // Columna para el motivo de rechazo
+  return_reason?: string | null;
+  local_user_phone?: string | null; // ✅ Nueva columna
   created_at: string;
   updated_at: string;
-  // Campos calculados para la UI
+  // Campos calculados
   has_message?: number;
   photos_count?: number;
   has_drawing?: number;
 };
 
+export function makeLocalId() {
+  return `L${Date.now()}_${Math.floor(Math.random() * 1e9)}`;
+}
+
+// ---------------------------------------------------------
+// 2. FUNCIONES DEL REPOSITORIO
+// ---------------------------------------------------------
+
 /**
- * Obtiene la lista de cartas para el técnico
+ * 1. LISTAR: Filtra por teléfono para que cada técnico vea solo lo suyo
  */
-export async function listLetters(params?: { onlyDrafts?: boolean }): Promise<LetterRow[]> {
+export async function listLetters(userPhone: string, params?: { onlyDrafts?: boolean }): Promise<LetterRow[]> {
   const db = await getDb();
-  // Incluimos RETURNED en la vista de borradores/pendientes
-  const where = params?.onlyDrafts 
-    ? `WHERE ll.status IN ('DRAFT', 'ASSIGNED', 'PENDING_SYNC', 'RETURNED')` 
+  
+  const whereStatus = params?.onlyDrafts 
+    ? `AND ll.status IN ('DRAFT', 'ASSIGNED', 'PENDING_SYNC', 'RETURNED')` 
     : ``;
 
+  // ✅ Agregamos WHERE ll.local_user_phone = ?
   const rows = await db.getAllAsync<LetterRow>(`
     SELECT ll.*,
       (CASE WHEN length(ll.message_content) > 5 THEN 1 ELSE 0 END) AS has_message,
       (SELECT COUNT(*) FROM photos p WHERE p.letter_id = ll.local_id) AS photos_count,
       (SELECT 1 FROM local_drawings d WHERE d.local_letter_id = ll.local_id) AS has_drawing
     FROM local_letters ll
-    ${where}
+    WHERE ll.local_user_phone = ?
+    ${whereStatus}
     ORDER BY 
       CASE WHEN ll.status = 'RETURNED' THEN 0 ELSE 1 END, 
       ll.due_date ASC, 
       ll.updated_at DESC;
-  `);
+  `, [userPhone]);
 
   return rows.map(r => ({
     ...r,
@@ -57,7 +68,7 @@ export async function listLetters(params?: { onlyDrafts?: boolean }): Promise<Le
 }
 
 /**
- * Obtiene una sola carta por su ID local (Corregido para evitar el error undefined)
+ * 2. OBTENER UNA CARTA (Para la pantalla de detalle)
  */
 export async function getLetter(localId: string): Promise<LetterRow | null> {
   const db = await getDb();
@@ -81,30 +92,36 @@ export async function getLetter(localId: string): Promise<LetterRow | null> {
 }
 
 /**
- * Limpia las cartas asignadas antes de un Pull para evitar mezcla de técnicos
+ * 3. LIMPIAR: Borra solo las de ESTE técnico antes de sincronizar
  */
-export async function clearLocalLetters() {
+export async function clearLocalLetters(userPhone: string) {
   const db = await getDb();
-  await db.runAsync(`DELETE FROM local_letters WHERE status IN ('ASSIGNED', 'RETURNED')`);
+  // ✅ Solo borramos si coinciden el status Y el teléfono
+  await db.runAsync(
+    `DELETE FROM local_letters 
+     WHERE status IN ('ASSIGNED', 'RETURNED') 
+     AND local_user_phone = ?`, 
+    [userPhone]
+  );
 }
 
 /**
- * Guarda una carta bajada del servidor (Sincronización)
+ * 4. GUARDAR (SYNC): Guarda la carta asociándola al teléfono del técnico
  */
-export async function saveSyncedLetter(data: any) {
+export async function saveSyncedLetter(data: any, userPhone: string) {
   const db = await getDb();
   const t = new Date().toISOString();
 
+  // Verificamos si ya existe para este usuario
   const existing = await db.getFirstAsync<{ local_id: string }>(
-    `SELECT local_id FROM local_letters WHERE server_id = ?`,
-    [String(data.id)] 
+    `SELECT local_id FROM local_letters WHERE server_id = ? AND local_user_phone = ?`,
+    [String(data.id), userPhone] 
   );
 
   const status = data.status || 'ASSIGNED';
   const reason = data.return_reason || null;
 
   if (existing) {
-    // Si ya existe (ej: fue devuelta), actualizamos estado y motivo
     await db.runAsync(
       `UPDATE local_letters 
        SET slip_id=?, child_name=?, village=?, status=?, return_reason=?, updated_at=?
@@ -112,23 +129,24 @@ export async function saveSyncedLetter(data: any) {
       [data.slip_id, data.child_name, data.village, status, reason, t, existing.local_id]
     );
   } else {
-    // Inserción de carta nueva
     const newLocalId = makeLocalId();
     await db.runAsync(
       `INSERT INTO local_letters (
         local_id, server_id, slip_id, child_code, child_name, village, contact_name, due_date,
-        status, return_reason, message_content, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?)`,
+        status, return_reason, message_content, local_user_phone, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?, ?)`,
       [
         newLocalId, String(data.id), data.slip_id, data.child_nbr || data.child_code, 
-        data.child_name, data.village, data.contact_name, data.due_date, status, reason, t, t
+        data.child_name, data.village, data.contact_name, data.due_date, status, reason, 
+        userPhone, // ✅ Aquí guardamos al dueño de la carta
+        t, t
       ]
     );
   }
 }
 
 /**
- * Actualiza solo el estado de la carta
+ * 5. CAMBIAR ESTADO
  */
 export async function setLetterStatus(localId: string, status: LetterRow["status"]) {
   const db = await getDb();
@@ -139,7 +157,7 @@ export async function setLetterStatus(localId: string, status: LetterRow["status
 }
 
 /**
- * Guarda el mensaje de texto de la carta
+ * 6. GUARDAR TEXTO DEL MENSAJE
  */
 export async function updateLetterMessage(localId: string, text: string) {
   const db = await getDb();

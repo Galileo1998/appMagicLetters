@@ -20,20 +20,21 @@ CREATE TABLE IF NOT EXISTS session (
 );
 
 CREATE TABLE IF NOT EXISTS local_letters (
-  local_id TEXT PRIMARY KEY,
-  server_id TEXT NULL,
-  slip_id TEXT NULL,
-  child_code TEXT NOT NULL,
-  child_name TEXT NULL,
-  village TEXT NULL,
-  contact_name TEXT NULL,
-  due_date TEXT NULL,
-  status TEXT NOT NULL,
-  return_reason TEXT NULL,  -- 👈 ¡ESTA ES LA QUE FALTABA!
-  message_content TEXT,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
-);
+      local_id TEXT PRIMARY KEY,
+      server_id TEXT NULL,
+      slip_id TEXT NULL,
+      child_code TEXT NOT NULL,
+      child_name TEXT NULL,
+      village TEXT NULL,
+      contact_name TEXT NULL,
+      due_date TEXT NULL,
+      status TEXT NOT NULL,
+      return_reason TEXT NULL,
+      message_content TEXT,
+      local_user_phone TEXT,  -- 👈 NUEVA COLUMNA: Para saber de quién es la carta
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
 
 CREATE TABLE IF NOT EXISTS photos (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

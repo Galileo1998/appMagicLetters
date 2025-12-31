@@ -1,9 +1,16 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect } from '@react-navigation/native';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router'; // 👈 AGREGADO: useFocusEffect
 import React, { useCallback, useState } from 'react';
-// ✅ SE AÑADIÓ ActivityIndicator A LA IMPORTACIÓN
-import { ActivityIndicator, Alert, FlatList, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
+} from 'react-native';
 
 import { initDb } from '../src/db';
 import { getMe, logout, UserRow } from '../src/repos/auth_repo';
@@ -17,21 +24,32 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
 
+  // ✅ CARGA DE DATOS: Se ejecuta al entrar y al volver a la pantalla
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
       await initDb();
-      const data = await listLetters({ onlyDrafts: true });
-      setLetters(data);
-      const me = await getMe();
+      
+      // 1. Obtenemos el usuario actual
+      const me = await getMe(); 
       setUser(me);
+
+      // 2. Si hay usuario, pedimos SUS cartas
+      if (me && me.phone) {
+        const data = await listLetters(me.phone, { onlyDrafts: true });
+        setLetters(data);
+      } else {
+        setLetters([]);
+      }
+
     } catch (error) {
-      console.error(error);
+      console.error("Error cargando Home:", error);
     } finally {
       setLoading(false);
     }
   }, []);
 
+  // ✅ ESTO ES LO QUE ACTUALIZA LOS ICONOS AL VOLVER
   useFocusEffect(
     useCallback(() => {
       loadData();
@@ -55,7 +73,7 @@ export default function HomeScreen() {
 
     } catch (e) {
       console.error(e);
-      Alert.alert("Error", "Fallo en la conexión. Revisa tu internet o la IP del servidor.");
+      Alert.alert("Error", "Fallo en la conexión. Revisa el Firewall (Puerto 8081) y la IP.");
     } finally {
       setSyncing(false);
     }
@@ -123,6 +141,7 @@ export default function HomeScreen() {
         📍 {item.village || 'Sin comunidad'}
       </Text>
 
+      {/* Muestra el motivo del rechazo si existe */}
       {item.status === 'RETURNED' && item.return_reason && (
         <View style={styles.reasonBox}>
           <Text style={styles.reasonText} numberOfLines={2}>
@@ -135,8 +154,10 @@ export default function HomeScreen() {
         <Text style={styles.dateText}>📅 Límite: {item.due_date}</Text>
       )}
 
+      {/* ICONOS DE PROGRESO (Checkea si cambian de color) */}
       <View style={styles.progressRow}>
         <View style={styles.progressItem}>
+          {/* Si tiene mensaje, color verde. Si no, gris */}
           <Ionicons name="chatbox-ellipses" size={16} color={item.has_message ? "#28a745" : "#ccc"} />
           <Text style={{ fontSize:10, color: item.has_message ? "#28a745" : "#999" }}>
              {item.has_message ? "Listo" : "Texto"}
@@ -144,6 +165,7 @@ export default function HomeScreen() {
         </View>
 
         <View style={styles.progressItem}>
+          {/* Si tiene fotos, color verde */}
           <Ionicons name="images" size={16} color={(item.photos_count || 0) > 0 ? "#28a745" : "#ccc"} />
           <Text style={{ fontSize:10, color: (item.photos_count || 0) > 0 ? "#28a745" : "#999" }}>
              {item.photos_count || 0} Fotos
@@ -151,6 +173,7 @@ export default function HomeScreen() {
         </View>
 
         <View style={styles.progressItem}>
+          {/* Si tiene dibujo, color verde */}
           <Ionicons name="brush" size={16} color={item.has_drawing ? "#28a745" : "#ccc"} />
           <Text style={{ fontSize:10, color: item.has_drawing ? "#28a745" : "#999" }}>
              {item.has_drawing ? "Listo" : "Dibujo"}
@@ -195,6 +218,7 @@ export default function HomeScreen() {
         }
       />
       
+      {/* Botón flotante para crear carta manual (si lo usas) */}
       <TouchableOpacity style={styles.fab} onPress={() => router.push("/create")}>
         <Ionicons name="add" size={30} color="#fff" />
       </TouchableOpacity>

@@ -14,35 +14,39 @@ const fixPath = (path: string) => {
 };
 
 export const syncService = {
-  
-  // --- PULL (Descargar) ---
   async pullAssignedLetters() {
     try {
       const phone = await AsyncStorage.getItem('user_phone');
-      if (!phone) return;
+      if (!phone) return 0; // Sin teléfono no hay paraíso
 
-      console.log(`⬇️ Descargando para: ${phone}...`);
+      console.log(`⬇️ Pull para: ${phone}`);
+      
       const response = await fetch(URL_PULL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone: phone }),
       });
 
-      if (!response.ok) throw new Error(`Error server pull: ${response.status}`);
+      if (!response.ok) throw new Error(`Error pull: ${response.status}`);
       const data = await response.json();
       
       if (Array.isArray(data)) {
+        // 1. Limpiamos SOLO las de este usuario
+        await lettersRepo.clearLocalLetters(phone); 
+
+        // 2. Guardamos pasando el teléfono
         for (const item of data) {
-          await lettersRepo.saveSyncedLetter(item);
+          await lettersRepo.saveSyncedLetter(item, phone);
         }
         return data.length;
       }
+      return 0;
+
     } catch (error) {
-      console.error("❌ Error pull:", error);
-      throw error;
+       // ... manejo de error
+       throw error;
     }
   },
-
   // --- PUSH (Subir) ---
   async pushPendingLetters() {
     const db = await getDb();

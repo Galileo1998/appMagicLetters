@@ -8,7 +8,7 @@ let db: SQLite.SQLiteDatabase | null = null;
 export async function getDb(): Promise<SQLite.SQLiteDatabase> {
   if (!db) {
     // 👇 CAMBIO AQUÍ: Cambiamos a '3' para forzar una base de datos nueva y limpia
-    db = await SQLite.openDatabaseAsync("magic_adventure9.db");
+    db = await SQLite.openDatabaseAsync("magic_adventure10.db");
     
     await db.execAsync(SQLITE_SCHEMA);
     await migrate(db);
