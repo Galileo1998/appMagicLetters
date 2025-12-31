@@ -2,7 +2,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
-import { Alert, FlatList, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+// ✅ SE AÑADIÓ ActivityIndicator A LA IMPORTACIÓN
+import { ActivityIndicator, Alert, FlatList, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { initDb } from '../src/db';
 import { getMe, logout, UserRow } from '../src/repos/auth_repo';
@@ -37,18 +38,10 @@ export default function HomeScreen() {
     }, [loadData])
   );
 
-// app/(tabs)/index.tsx
-
-  // ... imports ...
-
   const handleSync = async () => {
     try {
       setSyncing(true);
-      
-      // 1. PRIMERO SUBIMOS (Push)
       const uploaded = await syncService.pushPendingLetters();
-      
-      // 2. LUEGO DESCARGAMOS (Pull)
       const downloaded = await syncService.pullAssignedLetters();
 
       let msg = "";
@@ -58,7 +51,7 @@ export default function HomeScreen() {
       if (!msg) msg = "Todo está actualizado.";
 
       Alert.alert("Sincronización", msg);
-      await loadData(); // Recargar la lista visual
+      await loadData(); 
 
     } catch (e) {
       console.error(e);
@@ -67,7 +60,6 @@ export default function HomeScreen() {
       setSyncing(false);
     }
   };
-// app/(tabs)/index.tsx
 
   const handleLogout = () => {
     Alert.alert(
@@ -80,10 +72,7 @@ export default function HomeScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-             
-              
-              await logout(); // Solo borra la sesión de la DB (mantiene las cartas)
-              
+              await logout(); 
               if (router.canGoBack()) router.dismissAll();
               router.replace('/login');
             } catch (error) {
@@ -98,6 +87,7 @@ export default function HomeScreen() {
 
   const getStatusColor = (status: string) => {
     switch (status) {
+      case 'RETURNED': return '#dc3545';
       case 'DRAFT': return '#ffc107';      
       case 'ASSIGNED': return '#17a2b8';   
       case 'PENDING_SYNC': return '#fd7e14'; 
@@ -108,7 +98,10 @@ export default function HomeScreen() {
 
   const renderItem = ({ item }: { item: LetterRow }) => (
     <TouchableOpacity 
-      style={styles.card}
+      style={[
+        styles.card, 
+        item.status === 'RETURNED' && styles.cardReturned
+      ]}
       onPress={() => router.push(`/letter/${item.local_id}`)}
     >
       <View style={styles.cardHeader}>
@@ -116,7 +109,9 @@ export default function HomeScreen() {
           {item.slip_id ? `#${item.slip_id}` : 'Borrador'}
         </Text>
         <View style={[styles.badge, { backgroundColor: getStatusColor(item.status) }]}>
-          <Text style={styles.badgeText}>{item.status}</Text>
+          <Text style={styles.badgeText}>
+            {item.status === 'RETURNED' ? 'POR CORREGIR' : item.status}
+          </Text>
         </View>
       </View>
 
@@ -128,13 +123,19 @@ export default function HomeScreen() {
         📍 {item.village || 'Sin comunidad'}
       </Text>
 
+      {item.status === 'RETURNED' && item.return_reason && (
+        <View style={styles.reasonBox}>
+          <Text style={styles.reasonText} numberOfLines={2}>
+            ⚠️ {item.return_reason}
+          </Text>
+        </View>
+      )}
+
       {item.due_date && (
         <Text style={styles.dateText}>📅 Límite: {item.due_date}</Text>
       )}
 
-      {/* --- ICONOS DE PROGRESO (RECUPERADOS) --- */}
       <View style={styles.progressRow}>
-        {/* Mensaje */}
         <View style={styles.progressItem}>
           <Ionicons name="chatbox-ellipses" size={16} color={item.has_message ? "#28a745" : "#ccc"} />
           <Text style={{ fontSize:10, color: item.has_message ? "#28a745" : "#999" }}>
@@ -142,7 +143,6 @@ export default function HomeScreen() {
           </Text>
         </View>
 
-        {/* Fotos */}
         <View style={styles.progressItem}>
           <Ionicons name="images" size={16} color={(item.photos_count || 0) > 0 ? "#28a745" : "#ccc"} />
           <Text style={{ fontSize:10, color: (item.photos_count || 0) > 0 ? "#28a745" : "#999" }}>
@@ -150,7 +150,6 @@ export default function HomeScreen() {
           </Text>
         </View>
 
-        {/* Dibujo */}
         <View style={styles.progressItem}>
           <Ionicons name="brush" size={16} color={item.has_drawing ? "#28a745" : "#ccc"} />
           <Text style={{ fontSize:10, color: item.has_drawing ? "#28a745" : "#999" }}>
@@ -158,8 +157,6 @@ export default function HomeScreen() {
           </Text>
         </View>
       </View>
-      {/* -------------------------------------- */}
-
     </TouchableOpacity>
   );
 
@@ -176,7 +173,7 @@ export default function HomeScreen() {
         </View>
         <View style={styles.headerIcons}>
           <TouchableOpacity onPress={handleSync} disabled={syncing} style={styles.iconBtn}>
-            {syncing ? <Text style={{fontSize:10}}>...</Text> : <Ionicons name="cloud-download-outline" size={26} color="#1e62d0" />}
+            {syncing ? <ActivityIndicator size="small" color="#1e62d0" /> : <Ionicons name="cloud-download-outline" size={26} color="#1e62d0" />}
           </TouchableOpacity>
           <TouchableOpacity onPress={handleLogout} style={styles.iconBtn}>
             <Ionicons name="log-out-outline" size={26} color="#dc3545" />
@@ -218,6 +215,7 @@ const styles = StyleSheet.create({
   iconBtn: { padding: 5 },
   listContent: { padding: 15 },
   card: { backgroundColor: 'white', padding: 15, borderRadius: 12, marginBottom: 12, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 5, elevation: 2 },
+  cardReturned: { borderLeftWidth: 5, borderLeftColor: '#dc3545' },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 },
   slipText: { fontWeight: 'bold', color: '#888', fontSize: 12 },
   badge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10 },
@@ -225,11 +223,10 @@ const styles = StyleSheet.create({
   childName: { fontSize: 18, fontWeight: 'bold', color: '#222', marginBottom: 2 },
   villageText: { color: '#555', fontSize: 14 },
   dateText: { color: '#d9534f', fontSize: 12, fontWeight: 'bold', marginTop: 5 },
-  
-  // Estilos Nuevos para la barra de iconos
+  reasonBox: { backgroundColor: '#fff5f5', padding: 8, borderRadius: 8, marginTop: 8, borderLeftWidth: 2, borderLeftColor: '#dc3545' },
+  reasonText: { color: '#c53030', fontSize: 11, fontStyle: 'italic' },
   progressRow: { flexDirection: 'row', marginTop: 15, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#f0f0f0', justifyContent: 'space-around' },
   progressItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-
   emptyState: { alignItems: 'center', marginTop: 50 },
   fab: { position: 'absolute', right: 20, bottom: 30, backgroundColor: '#1e62d0', width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center', elevation: 5 }
 });

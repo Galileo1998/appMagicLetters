@@ -1,4 +1,4 @@
-import AsyncStorage from '@react-native-async-storage/async-storage'; // <--- 1. Importante
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
@@ -16,14 +16,20 @@ export default function Login() {
       await initDb();
       const p = phone.trim();
       
-      // Intentamos login (esto verifica si existe en la BD local o remota según tu repo)
+      // 1. Intentamos login
       const user = await loginByPhone(p);
 
-      // <--- 2. GUARDAR EL TELÉFONO PARA LA SINCRONIZACIÓN --->
-      // Esto soluciona el error "No hay teléfono de usuario"
+      // ✅ 2. GUARDAR DATOS PARA LA SINCRONIZACIÓN ✅
+      // Guardamos el teléfono
       await AsyncStorage.setItem('user_phone', p);
+      
+      // Guardamos el ID (es indispensable para que el pull identifique al técnico)
+      // Lo convertimos a String porque AsyncStorage solo acepta texto
+      if (user && user.id) {
+        await AsyncStorage.setItem('user_id', String(user.id));
+      }
 
-      // ADMIN -> pantalla admin, TECH -> home normal
+      // 3. Navegación según el rol
       if (user.role === "ADMIN") {
         router.replace("/admin");
       } else {
@@ -67,12 +73,12 @@ export default function Login() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16, justifyContent: "center" },
-  title: { fontSize: 22, fontWeight: "900", marginBottom: 16 },
-  label: { marginTop: 10, fontWeight: "800" },
-  input: { backgroundColor: "#f2f2f2", padding: 12, borderRadius: 12, marginTop: 6 },
-  btn: { backgroundColor: "#2b7", padding: 14, borderRadius: 14, marginTop: 18, alignItems: "center" },
-  btnText: { color: "white", fontWeight: "900" },
-  err: { color: "#b91c1c", marginTop: 10, fontWeight: "700" },
-  hint: { marginTop: 16, fontSize: 12, color: "#666" },
+  container: { flex: 1, padding: 16, justifyContent: "center", backgroundColor: 'white' },
+  title: { fontSize: 24, fontWeight: "900", marginBottom: 20, textAlign: 'center' },
+  label: { marginTop: 10, fontWeight: "800", color: '#444' },
+  input: { backgroundColor: "#f2f2f2", padding: 15, borderRadius: 12, marginTop: 6, fontSize: 16 },
+  btn: { backgroundColor: "#2b7", padding: 16, borderRadius: 14, marginTop: 24, alignItems: "center" },
+  btnText: { color: "white", fontWeight: "900", fontSize: 16 },
+  err: { color: "#b91c1c", marginTop: 12, fontWeight: "700", textAlign: 'center' },
+  hint: { marginTop: 20, fontSize: 12, color: "#888", textAlign: 'center' },
 });

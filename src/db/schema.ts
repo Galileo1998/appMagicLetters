@@ -29,7 +29,8 @@ CREATE TABLE IF NOT EXISTS local_letters (
   contact_name TEXT NULL,
   due_date TEXT NULL,
   status TEXT NOT NULL,
-  message_content TEXT, -- ✅ Solo esta columna de texto
+  return_reason TEXT NULL,  -- 👈 ¡ESTA ES LA QUE FALTABA!
+  message_content TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
