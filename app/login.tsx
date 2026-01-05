@@ -1,7 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+// 1. IMPORTAR IMAGE
+import { Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { initDb } from "../src/db";
 import { loginByPhone } from "../src/repos/auth_repo";
 
@@ -16,20 +17,14 @@ export default function Login() {
       await initDb();
       const p = phone.trim();
       
-      // 1. Intentamos login
       const user = await loginByPhone(p);
 
-      // ✅ 2. GUARDAR DATOS PARA LA SINCRONIZACIÓN ✅
-      // Guardamos el teléfono
       await AsyncStorage.setItem('user_phone', p);
       
-      // Guardamos el ID (es indispensable para que el pull identifique al técnico)
-      // Lo convertimos a String porque AsyncStorage solo acepta texto
       if (user && user.id) {
         await AsyncStorage.setItem('user_id', String(user.id));
       }
 
-      // 3. Navegación según el rol
       if (user.role === "ADMIN") {
         router.replace("/admin");
       } else {
@@ -48,6 +43,14 @@ export default function Login() {
 
   return (
     <View style={styles.container}>
+      
+      {/* 2. AQUÍ VA EL LOGO */}
+      {/* Asegúrate que la ruta sea correcta, normalmente subiendo un nivel con ../ */}
+      <Image 
+        source={require('../assets/logo.png')} 
+        style={styles.logo}
+      />
+
       <Text style={styles.title}>Iniciar sesión</Text>
 
       <Text style={styles.label}>Teléfono</Text>
@@ -66,7 +69,7 @@ export default function Login() {
       </Pressable>
 
       <Text style={styles.hint}>
-        Admin fijo: accionhonduras.org / 08019005012310
+        Admin fijo: accionhonduras.org / 0801********10
       </Text>
     </View>
   );
@@ -74,6 +77,16 @@ export default function Login() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 16, justifyContent: "center", backgroundColor: 'white' },
+  
+  // 3. ESTILO DEL LOGO
+  logo: {
+    width: 150,           // Ajusta el tamaño según necesites
+    height: 150,
+    alignSelf: 'center',  // Centrado horizontalmente
+    marginBottom: 20,     // Espacio antes del título
+    resizeMode: 'contain' // Mantiene la proporción de la imagen
+  },
+
   title: { fontSize: 24, fontWeight: "900", marginBottom: 20, textAlign: 'center' },
   label: { marginTop: 10, fontWeight: "800", color: '#444' },
   input: { backgroundColor: "#f2f2f2", padding: 15, borderRadius: 12, marginTop: 6, fontSize: 16 },

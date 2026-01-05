@@ -3,7 +3,7 @@ import { getDb } from '../db';
 import * as lettersRepo from '../repos/letters_repo';
 
 // ⚠️ Asegúrate de que esta IP sea la correcta de tu servidor
-const BASE_URL = 'http://192.168.1.64:8081/magicletter/api'; 
+const BASE_URL = 'http://192.168.0.107:8081/magicletter/api'; 
 const URL_PULL = `${BASE_URL}/get_assigned_letters.php`;
 const URL_PUSH = `${BASE_URL}/upload_letter.php`;
 
