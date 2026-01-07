@@ -22,10 +22,15 @@
         "foregroundImage": "./assets/logo.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.accionhonduras.magicletter"
+      "package": "org.accionhonduras.magicletter"
     },
     "web": {
       "favicon": "./assets/logo.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "8a0e400c-0e02-4268-a343-55a7d5ab8c8f"
+      }
     }
   }
 }
