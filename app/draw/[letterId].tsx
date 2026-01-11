@@ -281,34 +281,7 @@ export default function DrawScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* 🎨 CANVAS */}
-      <View style={styles.canvasContainer}>
-        <ViewShot ref={viewShotRef} options={{ format: "png", quality: 0.8 }} style={{flex:1}}>
-            <View style={styles.canvas} {...panResponder.panHandlers}>
-                
-                {/* 1. Background Image */}
-                {existingImage ? (
-                    <Image 
-                        source={{ uri: existingImage }} 
-                        style={[StyleSheet.absoluteFill, { width: '100%', height: '100%', resizeMode: 'contain' }]} 
-                    />
-                ) : (
-                    <Rect x="0" y="0" width="100%" height="100%" fill="white" />
-                )}
-
-                {/* 2. SVG Layer */}
-                <Svg style={styles.svg}>
-                    {/* Saved Paths */}
-                    {paths.map((item, index) => renderShape(item, index))}
-                    
-                    {/* Active Dragging Preview */}
-                    {renderPreview()}
-                </Svg>
-            </View>
-        </ViewShot>
-      </View>
-
-      {/* 🎛️ BOTTOM CONTROLS */}
+            {/* 🎛️ BOTTOM CONTROLS */}
       <View style={styles.bottomBar}>
         
         {/* Stroke Size Selector */}
@@ -340,6 +313,35 @@ export default function DrawScreen() {
           ))}
         </ScrollView>
       </View>
+
+      {/* 🎨 CANVAS */}
+      <View style={styles.canvasContainer}>
+        <ViewShot ref={viewShotRef} options={{ format: "png", quality: 0.8 }} style={{flex:1}}>
+            <View style={styles.canvas} {...panResponder.panHandlers}>
+                
+                {/* 1. Background Image */}
+                {existingImage ? (
+                    <Image 
+                        source={{ uri: existingImage }} 
+                        style={[StyleSheet.absoluteFill, { width: '100%', height: '100%', resizeMode: 'contain' }]} 
+                    />
+                ) : (
+                    <Rect x="0" y="0" width="100%" height="100%" fill="white" />
+                )}
+
+                {/* 2. SVG Layer */}
+                <Svg style={styles.svg}>
+                    {/* Saved Paths */}
+                    {paths.map((item, index) => renderShape(item, index))}
+                    
+                    {/* Active Dragging Preview */}
+                    {renderPreview()}
+                </Svg>
+            </View>
+        </ViewShot>
+      </View>
+
+
     </SafeAreaView>
   );
 }
