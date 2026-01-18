@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getDb } from '../db';
 import * as lettersRepo from '../repos/letters_repo';
 
-// ⚠️ Asegúrate de que esta IP sea la correcta de tu servidor
+// ⚠️ CONFIRMA QUE ESTA URL APUNTA A DONDE SUBISTE EL ARCHIVO PHP ARRIBA
 const BASE_URL = 'https://accionhonduras.org/patrocinio/api'; 
 const URL_PULL = `${BASE_URL}/get_assigned_letters.php`;
 const URL_PUSH = `${BASE_URL}/upload_letter.php`;
@@ -14,10 +14,11 @@ const fixPath = (path: string) => {
 };
 
 export const syncService = {
+  // --- PULL (Descargar) ---
   async pullAssignedLetters() {
     try {
       const phone = await AsyncStorage.getItem('user_phone');
-      if (!phone) return 0; // Sin teléfono no hay paraíso
+      if (!phone) return 0; 
 
       console.log(`⬇️ Pull para: ${phone}`);
       
@@ -31,119 +32,107 @@ export const syncService = {
       const data = await response.json();
       
       if (Array.isArray(data)) {
-        // 1. Limpiamos SOLO las de este usuario
+        // 1. Limpiamos cartas viejas
         await lettersRepo.clearLocalLetters(phone); 
 
-        // 2. Guardamos pasando el teléfono
+        // 2. Guardamos las nuevas
         for (const item of data) {
+          // A. Guardar carta normal
           await lettersRepo.saveSyncedLetter(item, phone);
+
+          // B. NUEVO: Si es RETURNED, guardar datos extra para editar
+          if (item.status === 'RETURNED' && item.returned_data) {
+             console.log(`  🔄 Recuperando datos de devolución: ${item.slip_id}`);
+             const db = await getDb();
+             // Actualizamos la fila que acabamos de insertar en saveSyncedLetter
+             await db.runAsync(
+               `UPDATE local_letters SET 
+                  prev_message = ?, 
+                  prev_photos = ?, 
+                  prev_drawing = ? 
+                WHERE server_id = ?`, 
+               [
+                 item.returned_data.message || '', 
+                 JSON.stringify(item.returned_data.photos || []), 
+                 item.returned_data.drawing || '', 
+                 String(item.id) 
+               ]
+             );
+          }
         }
         return data.length;
       }
       return 0;
 
     } catch (error) {
-       // ... manejo de error
+       console.error("Error Pull:", error);
        throw error;
     }
   },
-  // --- PUSH (Subir) ---
+
+  // --- PUSH (Tu código original que ya funcionaba) ---
   async pushPendingLetters() {
     const db = await getDb();
-    
-    // Buscar cartas marcadas como pendientes
     const pendingLetters = await db.getAllAsync<{ local_id: string, server_id: string }>(
       `SELECT local_id, server_id FROM local_letters WHERE status = 'PENDING_SYNC'`
     );
 
     if (pendingLetters.length === 0) return 0;
 
-    console.log(`⬆️ Procesando ${pendingLetters.length} cartas para subir...`);
+    console.log(`⬆️ Subiendo ${pendingLetters.length} cartas...`);
     let uploadedCount = 0;
 
     for (const letter of pendingLetters) {
       try {
-        console.log(`📦 Empaquetando carta Local: ${letter.local_id} -> Server: ${letter.server_id}`);
-        
         const formData = new FormData();
         formData.append('server_id', letter.server_id); 
 
-        // 1. OBTENER MENSAJE (CORREGIDO PARA DB NUEVA)
         const letterData = await db.getFirstAsync<{ message_content: string }>(
-          `SELECT message_content FROM local_letters WHERE local_id = ?`, 
-          [letter.local_id]
+          `SELECT message_content FROM local_letters WHERE local_id = ?`, [letter.local_id]
         );
+        formData.append('message', letterData?.message_content || '');
 
-        // Enviamos el contenido tal cual. Si está vacío, enviamos string vacía.
-        const msgToSend = letterData?.message_content || '';
-        formData.append('message', msgToSend);
-        console.log(`   📝 Mensaje adjuntado (${msgToSend.length} caracteres)`);
-
-        // 2. OBTENER DIBUJO
         const drawRow = await db.getFirstAsync<{ file_path: string }>(
           `SELECT file_path FROM local_drawings WHERE local_letter_id = ?`, [letter.local_id]
         );
-        
         if (drawRow?.file_path) {
-          const cleanPath = fixPath(drawRow.file_path);
-          console.log(`   🎨 Dibujo encontrado: ${cleanPath}`);
           // @ts-ignore
           formData.append('drawing', {
-            uri: cleanPath, 
-            name: `drawing_${letter.server_id}.png`,
-            type: 'image/png',
+            uri: fixPath(drawRow.file_path), 
+            name: `drawing_${letter.server_id}.png`, type: 'image/png',
           });
         }
 
-        // 3. OBTENER FOTOS
         const photos = await db.getAllAsync<{ file_path: string }>(
           `SELECT file_path FROM photos WHERE letter_id = ?`, [letter.local_id]
         );
-        
-        if (photos && photos.length > 0) {
-           console.log(`   📸 Encontradas ${photos.length} fotos.`);
+        if (photos) {
            photos.forEach((photo, index) => {
-            const cleanPath = fixPath(photo.file_path);
             // @ts-ignore
             formData.append(`photo_${index}`, {
-              uri: cleanPath,
-              name: `photo_${index}.jpg`,
-              type: 'image/jpeg',
+              uri: fixPath(photo.file_path),
+              name: `photo_${index}.jpg`, type: 'image/jpeg',
             });
           });
         }
 
-        // 4. ENVIAR
-        console.log("   🚀 Enviando request...");
         const response = await fetch(URL_PUSH, {
           method: 'POST',
           body: formData,
-          headers: {
-            'Accept': 'application/json',
-          },
+          headers: { 'Accept': 'application/json' }, // Content-Type se pone solo con FormData
         });
 
         const textResponse = await response.text();
-        console.log("   📡 Respuesta RAW:", textResponse);
-
-        try {
-            const result = JSON.parse(textResponse);
-            if (result.success) {
-              await lettersRepo.setLetterStatus(letter.local_id, 'SYNCED');
-              uploadedCount++;
-              console.log(`   ✅ SUBIDA EXITOSA.`);
-            } else {
-              console.error(`   ❌ Error del servidor:`, result.error);
-            }
-        } catch(e) {
-            console.error("   ❌ Error JSON:", e);
-        }
-
+        const result = JSON.parse(textResponse);
+        
+        if (result.success) {
+          await lettersRepo.setLetterStatus(letter.local_id, 'SYNCED');
+          uploadedCount++;
+        } 
       } catch (e) {
-        console.error(`   ❌ Error Excepción:`, e);
+        console.error(`Error subiendo ${letter.local_id}:`, e);
       }
     }
-
     return uploadedCount;
   }
 };

@@ -2,25 +2,40 @@
 import { getDb } from "../db";
 
 // ---------------------------------------------------------
-// 1. TIPOS Y UTILIDADES (Necesarios para que no de error)
+// 1. TIPOS
 // ---------------------------------------------------------
 
 export type LetterRow = {
   local_id: string;
   server_id: string | null;
   slip_id: string | null;
+  
+  // Datos del Niño/Carta
   child_code: string;
   child_name: string | null;
   village: string | null;
   contact_name: string | null;
-  due_date: string | null;
+  letter_type: string | null; // 👈 NUEVO: Tipo de carta
+  
+  // Fechas
+  due_date: string | null;           
+  days_remaining?: number | null;    
+  
+  // Estado
   status: "DRAFT" | "PENDING_SYNC" | "SYNCED" | "ASSIGNED" | "RETURNED" | "COMPLETADO";
-  message_content: string | null;
   return_reason?: string | null;
-  local_user_phone?: string | null; // ✅ Nueva columna
+  message_content: string | null;
+  
+  // Datos previos (Correcciones)
+  prev_message?: string | null;
+  prev_photos?: string | null;
+  prev_drawing?: string | null;
+
+  local_user_phone?: string | null;
   created_at: string;
   updated_at: string;
-  // Campos calculados
+  
+  // Contadores (Para validar envío)
   has_message?: number;
   photos_count?: number;
   has_drawing?: number;
@@ -31,11 +46,11 @@ export function makeLocalId() {
 }
 
 // ---------------------------------------------------------
-// 2. FUNCIONES DEL REPOSITORIO
+// 2. FUNCIONES
 // ---------------------------------------------------------
 
 /**
- * 1. LISTAR: Filtra por teléfono para que cada técnico vea solo lo suyo
+ * 1. LISTAR (Para el Home)
  */
 export async function listLetters(userPhone: string, params?: { onlyDrafts?: boolean }): Promise<LetterRow[]> {
   const db = await getDb();
@@ -44,7 +59,7 @@ export async function listLetters(userPhone: string, params?: { onlyDrafts?: boo
     ? `AND ll.status IN ('DRAFT', 'ASSIGNED', 'PENDING_SYNC', 'RETURNED')` 
     : ``;
 
-  // ✅ Agregamos WHERE ll.local_user_phone = ?
+  // Aseguramos que se seleccione 'letter_type'
   const rows = await db.getAllAsync<LetterRow>(`
     SELECT ll.*,
       (CASE WHEN length(ll.message_content) > 5 THEN 1 ELSE 0 END) AS has_message,
@@ -55,7 +70,7 @@ export async function listLetters(userPhone: string, params?: { onlyDrafts?: boo
     ${whereStatus}
     ORDER BY 
       CASE WHEN ll.status = 'RETURNED' THEN 0 ELSE 1 END, 
-      ll.due_date ASC, 
+      ll.days_remaining ASC, 
       ll.updated_at DESC;
   `, [userPhone]);
 
@@ -68,10 +83,11 @@ export async function listLetters(userPhone: string, params?: { onlyDrafts?: boo
 }
 
 /**
- * 2. OBTENER UNA CARTA (Para la pantalla de detalle)
+ * 2. OBTENER UNA CARTA (Detalle)
  */
 export async function getLetter(localId: string): Promise<LetterRow | null> {
   const db = await getDb();
+  
   const row = await db.getFirstAsync<LetterRow>(
     `SELECT ll.*,
       (CASE WHEN length(ll.message_content) > 5 THEN 1 ELSE 0 END) AS has_message,
@@ -92,11 +108,10 @@ export async function getLetter(localId: string): Promise<LetterRow | null> {
 }
 
 /**
- * 3. LIMPIAR: Borra solo las de ESTE técnico antes de sincronizar
+ * 3. LIMPIAR
  */
 export async function clearLocalLetters(userPhone: string) {
   const db = await getDb();
-  // ✅ Solo borramos si coinciden el status Y el teléfono
   await db.runAsync(
     `DELETE FROM local_letters 
      WHERE status IN ('ASSIGNED', 'RETURNED') 
@@ -106,13 +121,20 @@ export async function clearLocalLetters(userPhone: string) {
 }
 
 /**
- * 4. GUARDAR (SYNC): Guarda la carta asociándola al teléfono del técnico
+ * 4. GUARDAR (SYNC)
+ * Aquí agregamos 'letter_type' al UPDATE e INSERT
+ */
+/**
+ * 4. GUARDAR (SYNC)
  */
 export async function saveSyncedLetter(data: any, userPhone: string) {
   const db = await getDb();
   const t = new Date().toISOString();
 
-  // Verificamos si ya existe para este usuario
+  // Migración silenciosa
+  try { await db.runAsync("ALTER TABLE local_letters ADD COLUMN letter_type TEXT NULL"); } catch (e) {}
+  try { await db.runAsync("ALTER TABLE local_letters ADD COLUMN days_remaining INTEGER NULL"); } catch (e) {}
+
   const existing = await db.getFirstAsync<{ local_id: string }>(
     `SELECT local_id FROM local_letters WHERE server_id = ? AND local_user_phone = ?`,
     [String(data.id), userPhone] 
@@ -120,49 +142,56 @@ export async function saveSyncedLetter(data: any, userPhone: string) {
 
   const status = data.status || 'ASSIGNED';
   const reason = data.return_reason || null;
+  const daysLeft = (data.days_remaining !== undefined) ? data.days_remaining : null;
+  
+  // 🛡️ CORRECCIÓN AQUÍ: Aceptamos 'letter_type' O 'type'
+  const letterType = data.letter_type || data.type || 'Standard'; 
+
+  // Datos previos
+  const prevMsg = data.returned_data?.message || null;
+  const prevDraw = data.returned_data?.drawing || null;
+  const prevPhotos = data.returned_data?.photos ? JSON.stringify(data.returned_data.photos) : null;
 
   if (existing) {
     await db.runAsync(
       `UPDATE local_letters 
-       SET slip_id=?, child_name=?, village=?, status=?, return_reason=?, updated_at=?
+       SET slip_id=?, child_name=?, village=?, status=?, return_reason=?, 
+           prev_message=?, prev_drawing=?, prev_photos=?, updated_at=?,
+           due_date=?, days_remaining=?, letter_type=?
        WHERE local_id=?`,
-      [data.slip_id, data.child_name, data.village, status, reason, t, existing.local_id]
+      [
+        data.slip_id, data.child_name, data.village, status, reason, 
+        prevMsg, prevDraw, prevPhotos, t,
+        data.technician_due_date, daysLeft, letterType,
+        existing.local_id
+      ]
     );
   } else {
     const newLocalId = makeLocalId();
     await db.runAsync(
       `INSERT INTO local_letters (
         local_id, server_id, slip_id, child_code, child_name, village, contact_name, due_date,
-        status, return_reason, message_content, local_user_phone, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?, ?)`,
+        status, return_reason, message_content, local_user_phone, 
+        prev_message, prev_drawing, prev_photos, created_at, updated_at,
+        days_remaining, letter_type
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         newLocalId, String(data.id), data.slip_id, data.child_nbr || data.child_code, 
-        data.child_name, data.village, data.contact_name, data.due_date, status, reason, 
-        userPhone, // ✅ Aquí guardamos al dueño de la carta
-        t, t
+        data.child_name, data.village, data.contact_name, data.technician_due_date, status, reason, 
+        userPhone, 
+        prevMsg, prevDraw, prevPhotos, t, t,
+        daysLeft, letterType
       ]
     );
   }
 }
 
-/**
- * 5. CAMBIAR ESTADO
- */
 export async function setLetterStatus(localId: string, status: LetterRow["status"]) {
   const db = await getDb();
-  await db.runAsync(
-    `UPDATE local_letters SET status = ?, updated_at = datetime('now') WHERE local_id = ?`,
-    [status, localId]
-  );
+  await db.runAsync(`UPDATE local_letters SET status = ?, updated_at = datetime('now') WHERE local_id = ?`, [status, localId]);
 }
 
-/**
- * 6. GUARDAR TEXTO DEL MENSAJE
- */
 export async function updateLetterMessage(localId: string, text: string) {
   const db = await getDb();
-  await db.runAsync(
-    `UPDATE local_letters SET message_content = ?, updated_at = datetime('now') WHERE local_id = ?`,
-    [text, localId]
-  );
+  await db.runAsync(`UPDATE local_letters SET message_content = ?, updated_at = datetime('now') WHERE local_id = ?`, [text, localId]);
 }

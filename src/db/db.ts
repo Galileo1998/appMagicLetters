@@ -20,3 +20,4 @@ export async function getDb(): Promise<SQLite.SQLiteDatabase> {
 export async function initDb(): Promise<void> {
   await getDb();
 }
+

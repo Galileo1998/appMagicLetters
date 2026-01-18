@@ -23,15 +23,32 @@ CREATE TABLE IF NOT EXISTS local_letters (
       local_id TEXT PRIMARY KEY,
       server_id TEXT NULL,
       slip_id TEXT NULL,
+      
+      -- Datos del Niño/Carta
       child_code TEXT NOT NULL,
       child_name TEXT NULL,
       village TEXT NULL,
+      community_id TEXT NULL,       -- 🆕 ID Comunidad (Ej: 4089)
       contact_name TEXT NULL,
-      due_date TEXT NULL,
+      
+      -- Tipos y Fechas
+      letter_type TEXT NULL,        -- 🆕 (Welcome, Reply, Thank You)
+      due_date TEXT NULL,           -- Fecha PDF
+      technician_due_date TEXT NULL,-- 🆕 Fecha Calculada para Técnico
+      
+      -- Estado y Flujo
       status TEXT NOT NULL,
       return_reason TEXT NULL,
+      
+      -- Contenido Actual (Lo que el técnico escribe ahora)
       message_content TEXT,
-      local_user_phone TEXT,  -- 👈 NUEVA COLUMNA: Para saber de quién es la carta
+      
+      -- 🆕 DATOS PREVIOS (Para editar si fue RETURNED)
+      prev_message TEXT NULL,       -- Mensaje anterior devuelto
+      prev_photos TEXT NULL,        -- JSON string con URLs de fotos anteriores
+      prev_drawing TEXT NULL,       -- URL del dibujo anterior
+      
+      local_user_phone TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
