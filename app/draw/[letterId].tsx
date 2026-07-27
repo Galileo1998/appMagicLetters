@@ -7,6 +7,7 @@ import {
   Alert,
   Image,
   KeyboardAvoidingView,
+  Modal,
   PanResponder,
   Platform,
   SafeAreaView,
@@ -17,7 +18,7 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
-import Svg, { Circle, Line, Path, Rect } from 'react-native-svg';
+import Svg, { Circle, Ellipse, Line, Path, Polygon, Rect } from 'react-native-svg';
 import ViewShot from "react-native-view-shot";
 import { getDrawingRecord, saveDrawingPath } from "../../src/repos/drawings_repo";
 
@@ -43,6 +44,115 @@ interface DrawingItem {
   width: number;
 }
 
+type TemplateId = 'house' | 'tree' | 'butterfly' | 'fish' | 'rocket' | 'flower';
+
+const DRAWING_TEMPLATES: { id: TemplateId; name: string; emoji: string }[] = [
+  { id: 'house', name: 'Mi casa', emoji: '🏠' },
+  { id: 'tree', name: 'Árbol feliz', emoji: '🌳' },
+  { id: 'butterfly', name: 'Mariposa', emoji: '🦋' },
+  { id: 'fish', name: 'Pez', emoji: '🐟' },
+  { id: 'rocket', name: 'Cohete', emoji: '🚀' },
+  { id: 'flower', name: 'Jardín', emoji: '🌼' },
+];
+
+const templateStroke = {
+  fill: "none",
+  stroke: "#667085",
+  strokeWidth: 4,
+  strokeLinecap: "round" as const,
+  strokeLinejoin: "round" as const,
+};
+
+function renderTemplate(template: TemplateId) {
+  switch (template) {
+    case 'house':
+      return (
+        <>
+          <Circle {...templateStroke} cx="292" cy="78" r="34" />
+          <Line {...templateStroke} x1="292" y1="25" x2="292" y2="5" />
+          <Line {...templateStroke} x1="247" y1="48" x2="230" y2="36" />
+          <Line {...templateStroke} x1="337" y1="48" x2="354" y2="36" />
+          <Polygon {...templateStroke} points="55,250 180,130 305,250" />
+          <Rect {...templateStroke} x="78" y="250" width="204" height="180" rx="4" />
+          <Rect {...templateStroke} x="155" y="330" width="55" height="100" rx="3" />
+          <Rect {...templateStroke} x="98" y="280" width="48" height="48" rx="3" />
+          <Rect {...templateStroke} x="218" y="280" width="44" height="48" rx="3" />
+          <Path {...templateStroke} d="M18 430 Q90 395 160 430 T342 430" />
+        </>
+      );
+    case 'tree':
+      return (
+        <>
+          <Circle {...templateStroke} cx="180" cy="175" r="86" />
+          <Circle {...templateStroke} cx="116" cy="205" r="58" />
+          <Circle {...templateStroke} cx="244" cy="205" r="58" />
+          <Path {...templateStroke} d="M155 405 Q165 310 150 247 M205 405 Q195 310 212 245" />
+          <Path {...templateStroke} d="M180 330 130 278 M180 315 230 270" />
+          <Path {...templateStroke} d="M120 405 Q180 382 240 405 L255 450 H105Z" />
+          <Circle {...templateStroke} cx="137" cy="164" r="10" />
+          <Circle {...templateStroke} cx="213" cy="135" r="10" />
+          <Circle {...templateStroke} cx="240" cy="218" r="10" />
+        </>
+      );
+    case 'butterfly':
+      return (
+        <>
+          <Ellipse {...templateStroke} cx="180" cy="275" rx="20" ry="105" />
+          <Path {...templateStroke} d="M160 245 C75 105 25 205 85 285 C28 350 92 430 163 320" />
+          <Path {...templateStroke} d="M200 245 C285 105 335 205 275 285 C332 350 268 430 197 320" />
+          <Path {...templateStroke} d="M168 176 Q135 130 118 150 M192 176 Q225 130 242 150" />
+          <Circle {...templateStroke} cx="180" cy="168" r="20" />
+          <Circle {...templateStroke} cx="105" cy="238" r="20" />
+          <Circle {...templateStroke} cx="255" cy="238" r="20" />
+          <Circle {...templateStroke} cx="105" cy="345" r="16" />
+          <Circle {...templateStroke} cx="255" cy="345" r="16" />
+        </>
+      );
+    case 'fish':
+      return (
+        <>
+          <Ellipse {...templateStroke} cx="168" cy="270" rx="115" ry="78" />
+          <Polygon {...templateStroke} points="278,270 345,205 342,335" />
+          <Circle {...templateStroke} cx="105" cy="250" r="8" />
+          <Path {...templateStroke} d="M68 284 Q98 310 130 285" />
+          <Path {...templateStroke} d="M163 192 Q190 145 225 196 M162 347 Q190 395 225 342" />
+          <Path {...templateStroke} d="M18 435 Q60 410 102 435 T186 435 T270 435 T354 435" />
+          <Circle {...templateStroke} cx="58" cy="125" r="12" />
+          <Circle {...templateStroke} cx="85" cy="85" r="8" />
+        </>
+      );
+    case 'rocket':
+      return (
+        <>
+          <Path {...templateStroke} d="M180 65 C115 125 115 285 180 360 C245 285 245 125 180 65Z" />
+          <Circle {...templateStroke} cx="180" cy="190" r="38" />
+          <Path {...templateStroke} d="M132 270 75 355 142 330 M228 270 285 355 218 330" />
+          <Path {...templateStroke} d="M157 350 Q180 455 203 350" />
+          <Path {...templateStroke} d="M168 365 Q180 425 192 365" />
+          <Circle {...templateStroke} cx="75" cy="105" r="8" />
+          <Circle {...templateStroke} cx="292" cy="155" r="10" />
+          <Path {...templateStroke} d="m292 65 7 14 15 2-11 11 3 15-14-7-14 7 3-15-11-11 15-2Z" />
+        </>
+      );
+    case 'flower':
+      return (
+        <>
+          <Circle {...templateStroke} cx="180" cy="205" r="38" />
+          <Ellipse {...templateStroke} cx="180" cy="132" rx="35" ry="55" />
+          <Ellipse {...templateStroke} cx="180" cy="278" rx="35" ry="55" />
+          <Ellipse {...templateStroke} cx="107" cy="205" rx="55" ry="35" />
+          <Ellipse {...templateStroke} cx="253" cy="205" rx="55" ry="35" />
+          <Ellipse {...templateStroke} cx="128" cy="153" rx="35" ry="50" transform="rotate(-45 128 153)" />
+          <Ellipse {...templateStroke} cx="232" cy="153" rx="35" ry="50" transform="rotate(45 232 153)" />
+          <Line {...templateStroke} x1="180" y1="316" x2="180" y2="455" />
+          <Path {...templateStroke} d="M180 380 Q115 330 110 392 Q145 405 180 380Z" />
+          <Path {...templateStroke} d="M180 415 Q245 365 250 427 Q215 440 180 415Z" />
+          <Path {...templateStroke} d="M25 455 Q90 425 155 455 T335 455" />
+        </>
+      );
+  }
+}
+
 export default function DrawScreen() {
   const router = useRouter();
   const { letterId } = useLocalSearchParams<{ letterId: string }>();
@@ -60,6 +170,8 @@ export default function DrawScreen() {
   const [saving, setSaving] = useState(false);
   const [existingImage, setExistingImage] = useState<string | null>(null);
   const [description, setDescription] = useState("");
+  const [template, setTemplate] = useState<TemplateId | null>(null);
+  const [templateModalVisible, setTemplateModalVisible] = useState(false);
 
   // LOAD BACKGROUND IMAGE
   useEffect(() => {
@@ -159,8 +271,40 @@ export default function DrawScreen() {
         { text: "Borrar", style: 'destructive', onPress: () => {
             setPaths([]);
             setExistingImage(null);
+            setTemplate(null);
         }}
     ]);
+  };
+
+  const applyTemplate = (nextTemplate: TemplateId) => {
+    const replaceDrawing = () => {
+      setPaths([]);
+      setCurrentPath([]);
+      setExistingImage(null);
+      setTemplate(nextTemplate);
+      setTool('pen');
+      setTemplateModalVisible(false);
+    };
+
+    if (paths.length > 0 || existingImage) {
+      Alert.alert(
+        "Cambiar plantilla",
+        "La plantilla reemplazará el dibujo que está en el lienzo. ¿Deseas continuar?",
+        [
+          { text: "Cancelar", style: "cancel" },
+          { text: "Continuar", onPress: replaceDrawing },
+        ]
+      );
+      return;
+    }
+
+    replaceDrawing();
+  };
+
+  const generateRandomTemplate = () => {
+    const choices = DRAWING_TEMPLATES.filter((item) => item.id !== template);
+    const selected = choices[Math.floor(Math.random() * choices.length)] ?? DRAWING_TEMPLATES[0];
+    applyTemplate(selected.id);
   };
 
   // HELPER: RENDER SAVED SHAPES
@@ -283,6 +427,15 @@ export default function DrawScreen() {
 
             <View style={styles.separator} />
 
+            <TouchableOpacity
+              accessibilityLabel="Abrir plantillas de dibujo"
+              onPress={() => setTemplateModalVisible(true)}
+              style={styles.templateToolbarBtn}
+            >
+              <Ionicons name="sparkles" size={18} color="#7c3aed" />
+              <Text style={styles.templateToolbarText}>Plantillas</Text>
+            </TouchableOpacity>
+
             <TouchableOpacity onPress={handleUndo} style={styles.iconBtn}>
                 <Ionicons name="arrow-undo" size={22} color="#555" />
             </TouchableOpacity>
@@ -311,7 +464,20 @@ export default function DrawScreen() {
                     <Rect x="0" y="0" width="100%" height="100%" fill="white" />
                 )}
 
-                {/* 2. SVG Layer */}
+                {/* 2. Offline template layer */}
+                {template && !existingImage && (
+                  <Svg
+                    pointerEvents="none"
+                    style={StyleSheet.absoluteFill}
+                    viewBox="0 0 360 520"
+                    preserveAspectRatio="xMidYMid meet"
+                  >
+                    <Rect x="0" y="0" width="360" height="520" fill="#fffef8" />
+                    {renderTemplate(template)}
+                  </Svg>
+                )}
+
+                {/* 3. SVG Layer */}
                 <Svg style={styles.svg}>
                     {/* Saved Paths */}
                     {paths.map((item, index) => renderShape(item, index))}
@@ -361,6 +527,54 @@ export default function DrawScreen() {
           ))}
         </ScrollView>
       </View>
+
+      <Modal
+        visible={templateModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setTemplateModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.templateModal}>
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>Plantillas para dibujar</Text>
+                <Text style={styles.modalSubtitle}>Funcionan sin conexión a internet</Text>
+              </View>
+              <TouchableOpacity
+                accessibilityLabel="Cerrar plantillas"
+                onPress={() => setTemplateModalVisible(false)}
+                style={styles.modalClose}
+              >
+                <Text style={styles.modalCloseText}>×</Text>
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity onPress={generateRandomTemplate} style={styles.randomTemplateBtn}>
+              <Ionicons name="sparkles" size={20} color="#fff" />
+              <Text style={styles.randomTemplateText}>Generar una plantilla al azar</Text>
+            </TouchableOpacity>
+
+            <ScrollView contentContainerStyle={styles.templateGrid}>
+              {DRAWING_TEMPLATES.map((item) => (
+                <TouchableOpacity
+                  key={item.id}
+                  onPress={() => applyTemplate(item.id)}
+                  style={[styles.templateCard, template === item.id && styles.activeTemplateCard]}
+                >
+                  <View style={styles.templatePreview}>
+                    <Svg width="100%" height="100%" viewBox="0 0 360 520">
+                      {renderTemplate(item.id)}
+                    </Svg>
+                  </View>
+                  <Text style={styles.templateEmoji}>{item.emoji}</Text>
+                  <Text style={styles.templateName}>{item.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -381,6 +595,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center', marginHorizontal: 3, borderWidth: 1, borderColor: '#eee'
   },
   activeTool: { backgroundColor: '#007bff', borderColor: '#0056b3' },
+  templateToolbarBtn: {
+    minWidth: 78, height: 36, borderRadius: 8, paddingHorizontal: 8,
+    flexDirection: 'row', gap: 4, justifyContent: 'center', alignItems: 'center',
+    backgroundColor: '#f3e8ff', borderWidth: 1, borderColor: '#d8b4fe', marginHorizontal: 3
+  },
+  templateToolbarText: { fontSize: 11, fontWeight: '700', color: '#6d28d9' },
   separator: { width: 1, height: 25, backgroundColor: '#ddd', marginHorizontal: 8 },
   saveBtn: { backgroundColor: '#28a745', padding: 8, borderRadius: 20, width: 40, height: 40, justifyContent:'center', alignItems:'center' },
   
@@ -395,5 +615,34 @@ const styles = StyleSheet.create({
   activeStroke: { borderColor: '#007bff', backgroundColor: '#eef' },
   palette: { flexDirection: 'row', paddingLeft: 5 },
   colorBtn: { width: 32, height: 32, borderRadius: 16, marginHorizontal: 6, borderWidth: 2, borderColor: 'white', elevation: 2 },
-  activeColor: { borderColor: '#333', transform: [{scale: 1.15}] }
+  activeColor: { borderColor: '#333', transform: [{scale: 1.15}] },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(17,24,39,0.48)', justifyContent: 'flex-end' },
+  templateModal: {
+    maxHeight: '84%', backgroundColor: '#fffdf7', borderTopLeftRadius: 24,
+    borderTopRightRadius: 24, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 24
+  },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
+  modalTitle: { fontSize: 20, fontWeight: '800', color: '#342b4a' },
+  modalSubtitle: { marginTop: 3, fontSize: 12, color: '#667085' },
+  modalClose: {
+    width: 36, height: 36, borderRadius: 18, backgroundColor: '#f2f4f7',
+    alignItems: 'center', justifyContent: 'center'
+  },
+  modalCloseText: { fontSize: 28, lineHeight: 30, color: '#475467' },
+  randomTemplateBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: '#7c3aed', borderRadius: 12, paddingVertical: 12, marginBottom: 14
+  },
+  randomTemplateText: { color: '#fff', fontWeight: '800', fontSize: 14 },
+  templateGrid: {
+    flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', paddingBottom: 12
+  },
+  templateCard: {
+    width: '48%', height: 180, marginBottom: 12, borderRadius: 14, backgroundColor: '#fff',
+    borderWidth: 2, borderColor: '#e4e7ec', overflow: 'hidden', alignItems: 'center', paddingBottom: 8
+  },
+  activeTemplateCard: { borderColor: '#7c3aed', backgroundColor: '#faf5ff' },
+  templatePreview: { width: '100%', height: 125, padding: 8 },
+  templateEmoji: { position: 'absolute', right: 8, top: 7, fontSize: 20 },
+  templateName: { fontSize: 13, fontWeight: '700', color: '#344054' }
 });
