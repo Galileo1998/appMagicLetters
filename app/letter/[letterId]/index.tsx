@@ -28,7 +28,8 @@ export default function LetterMenuScreen() {
     letter.has_drawing === 1 &&
     letter.has_drawing_description === 1 &&
     (letter.answered_required_count || 0) === (letter.required_questions_count || 0) &&
-    ((letter.total_questions_count || 0) === 0 || (letter.answered_questions_count || 0) > 0);
+    (letter.total_questions_count || 0) > 0 &&
+    (letter.answered_questions_count || 0) > 0;
 
   async function handleSend() {
     Alert.alert(
@@ -186,14 +187,27 @@ export default function LetterMenuScreen() {
         >
           <View style={[styles.iconCircle,
             (letter.answered_required_count || 0) === (letter.required_questions_count || 0) &&
-            ((letter.total_questions_count || 0) === 0 || (letter.answered_questions_count || 0) > 0)
+            (letter.total_questions_count || 0) > 0 &&
+            (letter.answered_questions_count || 0) > 0
               ? styles.completedCircle : styles.pendingCircle]}>
-            <Ionicons name="help-circle" size={24} color="#555" />
+            <Ionicons
+              name="help-circle"
+              size={24}
+              color={
+                (letter.answered_required_count || 0) === (letter.required_questions_count || 0) &&
+                (letter.total_questions_count || 0) > 0 &&
+                (letter.answered_questions_count || 0) > 0
+                  ? "#fff"
+                  : "#555"
+              }
+            />
           </View>
           <View style={styles.actionTextContainer}>
-            <Text style={styles.actionTitle}>Preguntas al niño</Text>
+            <Text style={styles.actionTitle}>Preguntas al niño · Obligatorio</Text>
             <Text style={styles.actionSubtitle}>
-              {letter.answered_questions_count || 0} de {letter.total_questions_count || 0} respondidas
+              {(letter.total_questions_count || 0) === 0
+                ? "Sin preguntas descargadas: sincroniza cuando tengas señal"
+                : `${letter.answered_questions_count || 0} de ${letter.total_questions_count || 0} respondidas`}
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={20} color="#ccc" />

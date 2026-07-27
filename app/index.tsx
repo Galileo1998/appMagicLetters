@@ -146,11 +146,7 @@ export default function HomeScreen() {
         styles.card, 
         item.status === 'RETURNED' && styles.cardReturned
       ]}
-      onPress={() => router.push(
-        (item.answered_questions_count || 0) > 0
-          ? `/letter/${item.local_id}`
-          : `/letter/${item.local_id}/questions`
-      )}
+      onPress={() => router.push(`/letter/${item.local_id}`)}
     >
       <View style={styles.cardHeader}>
         <Text style={styles.slipText}>

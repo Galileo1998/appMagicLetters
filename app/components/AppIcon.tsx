@@ -178,6 +178,15 @@ export function AppIcon({
     case "square-outline":
       content = <Rect {...common} x="4" y="4" width="16" height="16" rx="1" />;
       break;
+    case "sparkles":
+      content = (
+        <>
+          <Path {...common} d="m12 3 1.2 3.8L17 8l-3.8 1.2L12 13l-1.2-3.8L7 8l3.8-1.2Z" />
+          <Path {...common} d="m18.5 13 .7 2.3 2.3.7-2.3.7-.7 2.3-.7-2.3-2.3-.7 2.3-.7Z" />
+          <Path {...common} d="m5 14 .8 2.2L8 17l-2.2.8L5 20l-.8-2.2L2 17l2.2-.8Z" />
+        </>
+      );
+      break;
     case "tablet-landscape":
       content = (
         <>

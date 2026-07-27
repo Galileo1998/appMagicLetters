@@ -6,6 +6,8 @@
     "start": "expo start",
     "setup:tunnel": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./scripts/setup-tunnel.ps1",
     "start:tunnel": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./scripts/start-tunnel.ps1",
+    "build:apk": "eas build --platform android --profile apk",
+    "build:playstore": "eas build --platform android --profile production",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "expo run:android",
     "ios": "expo run:ios",
