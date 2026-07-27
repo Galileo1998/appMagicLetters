@@ -10,7 +10,6 @@ import {
   Modal,
   PanResponder,
   Platform,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -18,6 +17,7 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Ellipse, Line, Path, Polygon, Rect } from 'react-native-svg';
 import ViewShot from "react-native-view-shot";
 import { getDrawingRecord, saveDrawingPath } from "../../src/repos/drawings_repo";
@@ -289,6 +289,7 @@ function renderTemplate(template: TemplateId) {
 
 export default function DrawScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { letterId } = useLocalSearchParams<{ letterId: string }>();
   const viewShotRef = useRef<ViewShot>(null);
 
@@ -538,14 +539,14 @@ export default function DrawScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <KeyboardAvoidingView
         style={styles.keyboardArea}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
       <ChildBackground />
       {/* 🛠️ TOP TOOLBAR */}
-      <View style={styles.toolbar}>
+      <View style={[styles.toolbar, { paddingTop: Math.max(insets.top + 8, 12) }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn}>
           <Ionicons name="arrow-back" size={24} color="#333" />
         </TouchableOpacity>
@@ -634,7 +635,10 @@ export default function DrawScreen() {
       </View>
 
       {/* 🎛️ BOTTOM CONTROLS */}
-      <View style={styles.bottomBar}>
+      <View style={[
+        styles.bottomBar,
+        { paddingBottom: Math.max(insets.bottom + 10, 14) },
+      ]}>
         <TextInput
           value={description}
           onChangeText={setDescription}
@@ -746,7 +750,7 @@ export default function DrawScreen() {
         </View>
       </Modal>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -755,7 +759,7 @@ const styles = StyleSheet.create({
   keyboardArea: { flex: 1 },
   toolbar: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 10, paddingVertical: 10, paddingTop: 40,
+    paddingHorizontal: 10, paddingBottom: 10,
     backgroundColor: 'white', borderBottomWidth: 1, borderBottomColor: '#eee', elevation: 2
   },
   toolsScroll: { alignItems: 'center', paddingHorizontal: 5 },
