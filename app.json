@@ -4,7 +4,7 @@
     "slug": "magicletter",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/logo.png",
+    "icon": "./assets/app-icon-square.png",
     "userInterfaceStyle": "light",
     "splash": {
       "image": "./assets/logo.png",
@@ -19,13 +19,31 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/logo.png",
+        "foregroundImage": "./assets/app-icon-square.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.accionhonduras.magicletter"
+      "softwareKeyboardLayoutMode": "resize",
+      "package": "org.accionhonduras.magicletter"
     },
     "web": {
       "favicon": "./assets/logo.png"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "8a0e400c-0e02-4268-a343-55a7d5ab8c8f"
+      }
+    },
+    "plugins": [
+      "expo-font",
+      "expo-router",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Permite a Magic Letter seleccionar fotografías para la carta.",
+          "microphonePermission": false
+        }
+      ],
+      "expo-web-browser"
+    ]
   }
 }

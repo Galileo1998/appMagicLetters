@@ -1,149 +1,147 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getDb } from '../db';
-import * as lettersRepo from '../repos/letters_repo';
+import * as FileSystem from "expo-file-system/legacy";
+import { getDb } from "../db";
+import { getDrawingRecord } from "../repos/drawings_repo";
+import { getMe } from "../repos/auth_repo";
+import * as lettersRepo from "../repos/letters_repo";
+import { listPhotos, upsertReturnedPhoto } from "../repos/photos_repo";
+import { listAnswers, replaceQuestions } from "../repos/questions_repo";
+import { apiFetch } from "./api";
 
-// ⚠️ Asegúrate de que esta IP sea la correcta de tu servidor
-const BASE_URL = 'https://accionhonduras.org/patrocinio/api'; 
-const URL_PULL = `${BASE_URL}/get_assigned_letters.php`;
-const URL_PUSH = `${BASE_URL}/upload_letter.php`;
+function asFileUri(path: string) {
+  return path.startsWith("file://") ? path : `file://${path}`;
+}
 
-const fixPath = (path: string) => {
-  if (!path) return "";
-  if (path.startsWith('file://')) return path;
-  return `file://${path}`;
-};
+async function cacheRemoteFile(url: string, prefix: string) {
+  const base = FileSystem.documentDirectory;
+  if (!base) throw new Error("Almacenamiento local no disponible");
+  const directory = `${base}returned/`;
+  await FileSystem.makeDirectoryAsync(directory, { intermediates: true });
+  const extension = url.split("?")[0].split(".").pop() || "jpg";
+  const target = `${directory}${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}.${extension}`;
+  const result = await FileSystem.downloadAsync(url, target);
+  return result.uri;
+}
 
 export const syncService = {
   async pullAssignedLetters() {
-    try {
-      const phone = await AsyncStorage.getItem('user_phone');
-      if (!phone) return 0; // Sin teléfono no hay paraíso
+    const response = await apiFetch("get_assigned_letters.php", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || `Error de descarga (${response.status})`);
 
-      console.log(`⬇️ Pull para: ${phone}`);
-      
-      const response = await fetch(URL_PULL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: phone }),
-      });
+    await replaceQuestions(Array.isArray(payload.questions) ? payload.questions : []);
+    const letters = Array.isArray(payload.letters) ? payload.letters : [];
+    const me = await getMe();
+    if (!me) throw new Error("No hay una sesión local activa");
 
-      if (!response.ok) throw new Error(`Error pull: ${response.status}`);
-      const data = await response.json();
-      
-      if (Array.isArray(data)) {
-        // 1. Limpiamos SOLO las de este usuario
-        await lettersRepo.clearLocalLetters(phone); 
+    for (const item of letters) {
+      const localId = await lettersRepo.saveSyncedLetter(item, me.phone);
+      if (item.status !== "RETURNED" || !item.returned_data) continue;
 
-        // 2. Guardamos pasando el teléfono
-        for (const item of data) {
-          await lettersRepo.saveSyncedLetter(item, phone);
-        }
-        return data.length;
+      const db = await getDb();
+      const returned = item.returned_data;
+      if (typeof returned.message === "string" && returned.message !== "") {
+        await lettersRepo.updateLetterMessage(localId, returned.message);
       }
-      return 0;
-
-    } catch (error) {
-       // ... manejo de error
-       throw error;
+      if (returned.drawing?.url) {
+        const path = await cacheRemoteFile(returned.drawing.url, `drawing_${item.id}`);
+        await db.runAsync(`DELETE FROM local_drawings WHERE local_letter_id=?`, [localId]);
+        await db.runAsync(
+          `INSERT INTO local_drawings (id, local_letter_id, file_path, description, created_at)
+           VALUES (?, ?, ?, ?, datetime('now'))`,
+          [`RD${Date.now()}`, localId, path, returned.drawing.description ?? ""]
+        );
+      }
+      if (Array.isArray(returned.photos)) {
+        for (let index = 0; index < returned.photos.length && index < 3; index++) {
+          const photo = returned.photos[index];
+          if (!photo?.url) continue;
+          const path = await cacheRemoteFile(photo.url, `photo_${item.id}_${index + 1}`);
+          await upsertReturnedPhoto(localId, index + 1, path, photo.description ?? "");
+        }
+        await db.runAsync(`DELETE FROM photos WHERE letter_id=? AND slot>?`, [localId, returned.photos.length]);
+      }
+      if (Array.isArray(returned.answers)) {
+        for (const answer of returned.answers) {
+          await db.runAsync(
+            `INSERT INTO letter_answers (letter_id, question_id, question_text, answer_text, updated_at)
+             VALUES (?, ?, ?, ?, datetime('now'))
+             ON CONFLICT(letter_id, question_id) DO UPDATE SET answer_text=excluded.answer_text,
+               question_text=excluded.question_text, updated_at=datetime('now')`,
+            [localId, Number(answer.question_id), answer.question_text, answer.answer_text]
+          );
+        }
+      }
     }
+    return letters.length;
   },
-  // --- PUSH (Subir) ---
+
   async pushPendingLetters() {
     const db = await getDb();
-    
-    // Buscar cartas marcadas como pendientes
-    const pendingLetters = await db.getAllAsync<{ local_id: string, server_id: string }>(
-      `SELECT local_id, server_id FROM local_letters WHERE status = 'PENDING_SYNC'`
+    const pending = await db.getAllAsync<{
+      local_id: string;
+      server_id: string;
+      submission_id: string | null;
+      message_content: string | null;
+    }>(
+      `SELECT local_id, server_id, submission_id, message_content
+       FROM local_letters WHERE status='PENDING_SYNC' ORDER BY updated_at`
     );
 
-    if (pendingLetters.length === 0) return 0;
-
-    console.log(`⬆️ Procesando ${pendingLetters.length} cartas para subir...`);
-    let uploadedCount = 0;
-
-    for (const letter of pendingLetters) {
+    let uploaded = 0;
+    let failed = 0;
+    for (const letter of pending) {
       try {
-        console.log(`📦 Empaquetando carta Local: ${letter.local_id} -> Server: ${letter.server_id}`);
-        
-        const formData = new FormData();
-        formData.append('server_id', letter.server_id); 
+        const submissionId = letter.submission_id || `${letter.local_id}-${Date.now()}`;
+        if (!letter.submission_id) {
+          await db.runAsync(`UPDATE local_letters SET submission_id=? WHERE local_id=?`, [submissionId, letter.local_id]);
+        }
 
-        // 1. OBTENER MENSAJE (CORREGIDO PARA DB NUEVA)
-        const letterData = await db.getFirstAsync<{ message_content: string }>(
-          `SELECT message_content FROM local_letters WHERE local_id = ?`, 
-          [letter.local_id]
-        );
+        const form = new FormData();
+        form.append("server_id", letter.server_id);
+        form.append("submission_id", submissionId);
+        form.append("message", letter.message_content ?? "");
 
-        // Enviamos el contenido tal cual. Si está vacío, enviamos string vacía.
-        const msgToSend = letterData?.message_content || '';
-        formData.append('message', msgToSend);
-        console.log(`   📝 Mensaje adjuntado (${msgToSend.length} caracteres)`);
-
-        // 2. OBTENER DIBUJO
-        const drawRow = await db.getFirstAsync<{ file_path: string }>(
-          `SELECT file_path FROM local_drawings WHERE local_letter_id = ?`, [letter.local_id]
-        );
-        
-        if (drawRow?.file_path) {
-          const cleanPath = fixPath(drawRow.file_path);
-          console.log(`   🎨 Dibujo encontrado: ${cleanPath}`);
-          // @ts-ignore
-          formData.append('drawing', {
-            uri: cleanPath, 
+        const drawing = await getDrawingRecord(letter.local_id);
+        if (drawing) {
+          form.append("drawing_description", drawing.description);
+          form.append("drawing", {
+            uri: asFileUri(drawing.file_path),
             name: `drawing_${letter.server_id}.png`,
-            type: 'image/png',
-          });
+            type: "image/png",
+          } as any);
         }
 
-        // 3. OBTENER FOTOS
-        const photos = await db.getAllAsync<{ file_path: string }>(
-          `SELECT file_path FROM photos WHERE letter_id = ?`, [letter.local_id]
-        );
-        
-        if (photos && photos.length > 0) {
-           console.log(`   📸 Encontradas ${photos.length} fotos.`);
-           photos.forEach((photo, index) => {
-            const cleanPath = fixPath(photo.file_path);
-            // @ts-ignore
-            formData.append(`photo_${index}`, {
-              uri: cleanPath,
-              name: `photo_${index}.jpg`,
-              type: 'image/jpeg',
-            });
-          });
-        }
-
-        // 4. ENVIAR
-        console.log("   🚀 Enviando request...");
-        const response = await fetch(URL_PUSH, {
-          method: 'POST',
-          body: formData,
-          headers: {
-            'Accept': 'application/json',
-          },
+        const descriptions: Record<string, string> = {};
+        const photos = await listPhotos(letter.local_id);
+        photos.forEach((photo, index) => {
+          const key = `photo_${index}`;
+          descriptions[key] = photo.description;
+          form.append(key, {
+            uri: asFileUri(photo.file_path),
+            name: `${key}.jpg`,
+            type: "image/jpeg",
+          } as any);
         });
+        form.append("photo_descriptions", JSON.stringify(descriptions));
+        form.append("answers", JSON.stringify(await listAnswers(letter.local_id)));
 
-        const textResponse = await response.text();
-        console.log("   📡 Respuesta RAW:", textResponse);
-
-        try {
-            const result = JSON.parse(textResponse);
-            if (result.success) {
-              await lettersRepo.setLetterStatus(letter.local_id, 'SYNCED');
-              uploadedCount++;
-              console.log(`   ✅ SUBIDA EXITOSA.`);
-            } else {
-              console.error(`   ❌ Error del servidor:`, result.error);
-            }
-        } catch(e) {
-            console.error("   ❌ Error JSON:", e);
+        const response = await apiFetch("upload_letter.php", { method: "POST", body: form });
+        const result = await response.json();
+        if (!response.ok || !result.success) {
+          throw new Error(result.error || `Error de envío (${response.status})`);
         }
-
-      } catch (e) {
-        console.error(`   ❌ Error Excepción:`, e);
+        await lettersRepo.setLetterStatus(letter.local_id, "SYNCED");
+        await lettersRepo.setSyncError(letter.local_id, null);
+        uploaded++;
+      } catch (error: any) {
+        await lettersRepo.setSyncError(letter.local_id, error?.message ?? "Error desconocido");
+        failed++;
       }
     }
-
-    return uploadedCount;
-  }
+    return { uploaded, failed };
+  },
 };

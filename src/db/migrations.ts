@@ -1,25 +1,26 @@
 import * as SQLite from "expo-sqlite";
 
 export async function migrate(db: SQLite.SQLiteDatabase) {
-  console.log("[Migrations] Iniciando migración limpia para v9...");
-
-  // Como estamos en una instalación limpia (v9), el schema.ts ya creó las tablas correctas
-  // con la columna 'message_content'. No necesitamos recrear tablas ni triggers viejos.
-
-  // =====================================================
-  // SEED: USUARIO ADMINISTRADOR
-  // =====================================================
-  // Insertamos el usuario por defecto para que puedas hacer login
-  const adminId = "ADMIN_FIXED";
-  try {
-    await db.execAsync(`
-      INSERT OR IGNORE INTO users (id, role, name, email, phone, is_protected, created_at, updated_at)
-      VALUES ('${adminId}', 'ADMIN', 'Administrador', 'accionhonduras.org', '08019005012310', 1, datetime('now'), datetime('now'));
-    `);
-    console.log("[Migrations] Usuario Admin verificado/insertado.");
-  } catch (e) {
-    console.error("[Migrations] Error insertando Admin:", e);
+  async function addColumn(table: string, column: string, definition: string) {
+    const columns = await db.getAllAsync<{ name: string }>(`PRAGMA table_info(${table})`);
+    if (!columns.some((item) => item.name === column)) {
+      await db.execAsync(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+    }
   }
 
-  console.log("[Migrations] Listo.");
+  await addColumn("local_letters", "local_user_phone", "TEXT NULL");
+  await addColumn("local_letters", "message_content", "TEXT NULL");
+  await addColumn("local_letters", "return_reason", "TEXT NULL");
+  await addColumn("local_letters", "submission_id", "TEXT NULL");
+  await addColumn("local_letters", "sync_error", "TEXT NULL");
+  await addColumn("photos", "slot", "INTEGER NULL");
+  await addColumn("photos", "file_path", "TEXT NULL");
+  await addColumn("photos", "description", "TEXT NOT NULL DEFAULT ''");
+  await addColumn("photos", "updated_at", "TEXT NULL");
+  await addColumn("local_drawings", "description", "TEXT NOT NULL DEFAULT ''");
+
+  await db.execAsync(`
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_photos_letter_slot ON photos(letter_id, slot);
+    CREATE INDEX IF NOT EXISTS idx_letters_owner_status ON local_letters(local_user_phone, status);
+  `);
 }

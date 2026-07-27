@@ -1,0 +1,9 @@
+.git
+node_modules/
+.expo/
+dist/
+web-build/
+android/
+ios/
+appMagicAH-main/
+appMagicLetters-main/

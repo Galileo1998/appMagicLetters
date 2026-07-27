@@ -1,33 +1,32 @@
 // src/components/PhotoGallery.tsx
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Image, Pressable, Text, View } from "react-native";
-import { deletePhoto, listPhotosByLetter } from "../repos/photos_repo";
-import type { Photo } from "../types/models";
+import { deletePhoto, listPhotos, PhotoRow } from "../repos/photos_repo";
 
 export function PhotoGallery({ letterLocalId }: { letterLocalId: string }) {
-  const [photos, setPhotos] = useState<Photo[]>([]);
+  const [photos, setPhotos] = useState<PhotoRow[]>([]);
 
-  async function reload() {
-    const rows = await listPhotosByLetter(letterLocalId);
+  const reload = useCallback(async () => {
+    const rows = await listPhotos(letterLocalId);
     setPhotos(rows ?? []);
-  }
+  }, [letterLocalId]);
 
   useEffect(() => {
     reload();
-  }, [letterLocalId]);
+  }, [reload]);
 
   return (
     <View style={{ gap: 8 }}>
       {photos.map((p) => (
         <View key={String(p.id)} style={{ gap: 6 }}>
           <Image
-            source={{ uri: p.photo_uri }}
+            source={{ uri: p.file_path }}
             style={{ width: "100%", height: 200, borderRadius: 12 }}
             resizeMode="cover"
           />
           <Pressable
             onPress={async () => {
-              if (p.id) await deletePhoto(p.id);
+              await deletePhoto(letterLocalId, p.slot);
               await reload();
             }}
             style={{ padding: 10, borderWidth: 1, borderRadius: 10 }}

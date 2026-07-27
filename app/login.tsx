@@ -1,14 +1,16 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
 // 1. IMPORTAR IMAGE
 import { Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { initDb } from "../src/db";
-import { loginByPhone } from "../src/repos/auth_repo";
+import { saveAuthenticatedUser } from "../src/repos/auth_repo";
+import { loginRemote } from "../src/services/api";
+import { ChildBackground } from "./components/ChildBackground";
 
 export default function Login() {
   const router = useRouter();
   const [phone, setPhone] = useState("");
+  const [pin, setPin] = useState("");
   const [err, setErr] = useState<string | null>(null);
 
   async function onLogin() {
@@ -17,32 +19,18 @@ export default function Login() {
       await initDb();
       const p = phone.trim();
       
-      const user = await loginByPhone(p);
-
-      await AsyncStorage.setItem('user_phone', p);
-      
-      if (user && user.id) {
-        await AsyncStorage.setItem('user_id', String(user.id));
-      }
-
-      if (user.role === "ADMIN") {
-        router.replace("/admin");
-      } else {
-        router.replace("/");
-      }
+      const remoteUser = await loginRemote(p, pin);
+      await saveAuthenticatedUser(remoteUser);
+      router.replace("/");
 
     } catch (e: any) {
-      if (String(e?.message) === "TEL_NO_REGISTRADO") {
-        setErr("Teléfono no registrado. Pide al administrador que te cree.");
-      } else {
-        setErr("No se pudo iniciar sesión. Verifica tu conexión.");
-        console.error(e);
-      }
+      setErr(e?.message || "Se necesita conexión para el primer inicio de sesión.");
     }
   }
 
   return (
     <View style={styles.container}>
+      <ChildBackground />
       
       {/* 2. AQUÍ VA EL LOGO */}
       {/* Asegúrate que la ruta sea correcta, normalmente subiendo un nivel con ../ */}
@@ -62,21 +50,29 @@ export default function Login() {
         placeholder="Ej. 99998888"
       />
 
+      <Text style={styles.label}>PIN</Text>
+      <TextInput
+        style={styles.input}
+        value={pin}
+        onChangeText={setPin}
+        keyboardType="number-pad"
+        secureTextEntry
+        placeholder="PIN asignado por administración"
+      />
+
       {err ? <Text style={styles.err}>{err}</Text> : null}
 
       <Pressable style={styles.btn} onPress={onLogin}>
         <Text style={styles.btnText}>Entrar</Text>
       </Pressable>
 
-      <Text style={styles.hint}>
-        Admin fijo: accionhonduras.org / 0801********10
-      </Text>
+      <Text style={styles.hint}>El primer acceso requiere señal. Después podrás trabajar sin conexión.</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16, justifyContent: "center", backgroundColor: 'white' },
+  container: { flex: 1, padding: 16, justifyContent: "center", backgroundColor: '#F7FCFF' },
   
   // 3. ESTILO DEL LOGO
   logo: {

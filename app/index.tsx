@@ -1,4 +1,5 @@
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon as Ionicons } from './components/AppIcon';
+import { ChildBackground } from './components/ChildBackground';
 import { useFocusEffect, useRouter } from 'expo-router'; // 👈 AGREGADO: useFocusEffect
 import React, { useCallback, useState } from 'react';
 import {
@@ -57,23 +58,48 @@ export default function HomeScreen() {
   );
 
   const handleSync = async () => {
+    setSyncing(true);
     try {
-      setSyncing(true);
-      const uploaded = await syncService.pushPendingLetters();
-      const downloaded = await syncService.pullAssignedLetters();
+      let uploaded = 0;
+      let failed = 0;
+      let downloaded: number | null = null;
+      let connectionError: string | null = null;
 
-      let msg = "";
-      if (uploaded > 0) msg += `Se enviaron ${uploaded} cartas. `;
-      if (typeof downloaded === 'number') msg += `Se recibieron ${downloaded} cartas.`;
-      
-      if (!msg) msg = "Todo está actualizado.";
+      try {
+        const push = await syncService.pushPendingLetters();
+        uploaded = push.uploaded;
+        failed = push.failed;
+      } catch (error: any) {
+        connectionError = error?.message ?? "No se pudo conectar.";
+      }
+      try {
+        downloaded = await syncService.pullAssignedLetters();
+      } catch (error: any) {
+        connectionError = error?.message ?? "No se pudo descargar.";
+      }
 
-      Alert.alert("Sincronización", msg);
-      await loadData(); 
+      const authenticationExpired = Boolean(
+        connectionError &&
+        /autenticaci|token.+(?:inv[aá]lido|vencido)/i.test(connectionError)
+      );
+      if (authenticationExpired) {
+        await logout();
+        if (router.canGoBack()) router.dismissAll();
+        router.replace("/login");
+        Alert.alert(
+          "Sesión vencida",
+          "La seguridad de la aplicación fue actualizada. Inicia sesión nuevamente con tu teléfono y PIN. Tus cartas guardadas en la tablet se conservarán."
+        );
+        return;
+      }
 
-    } catch (e) {
-      console.error(e);
-      Alert.alert("Error", "Fallo en la conexión. Revisa el Firewall (Puerto 8081) y la IP.");
+      const parts = [];
+      if (uploaded) parts.push(`Enviadas: ${uploaded}.`);
+      if (failed) parts.push(`Pendientes con error: ${failed}.`);
+      if (downloaded !== null) parts.push(`Asignadas descargadas: ${downloaded}.`);
+      if (connectionError) parts.push(`Sin conexión: ${connectionError}`);
+      Alert.alert("Sincronización", parts.join(" ") || "Todo está actualizado.");
+      await loadData();
     } finally {
       setSyncing(false);
     }
@@ -120,7 +146,11 @@ export default function HomeScreen() {
         styles.card, 
         item.status === 'RETURNED' && styles.cardReturned
       ]}
-      onPress={() => router.push(`/letter/${item.local_id}`)}
+      onPress={() => router.push(
+        (item.answered_questions_count || 0) > 0
+          ? `/letter/${item.local_id}`
+          : `/letter/${item.local_id}/questions`
+      )}
     >
       <View style={styles.cardHeader}>
         <Text style={styles.slipText}>
@@ -149,6 +179,12 @@ export default function HomeScreen() {
           </Text>
         </View>
       )}
+
+      {item.sync_error ? (
+        <View style={styles.reasonBox}>
+          <Text style={styles.reasonText}>No se pudo enviar: {item.sync_error}</Text>
+        </View>
+      ) : null}
 
       {item.due_date && (
         <Text style={styles.dateText}>📅 Límite: {item.due_date}</Text>
@@ -185,6 +221,7 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.container}>
+      <ChildBackground />
       <View style={styles.header}>
         <View>
           <Text style={styles.welcomeTitle}>
@@ -231,7 +268,7 @@ const styles = StyleSheet.create({
   header: { 
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', 
     paddingHorizontal: 20, paddingBottom: 15, paddingTop: 60, 
-    backgroundColor: 'white', borderBottomWidth: 1, borderBottomColor: '#eee'
+    backgroundColor: 'rgba(255,255,255,0.94)', borderBottomWidth: 1, borderBottomColor: '#eee'
   },
   welcomeTitle: { fontSize: 20, fontWeight: '900', color: '#333' },
   phoneSubtitle: { fontSize: 13, color: '#666', marginTop: 2, fontWeight: '500' },

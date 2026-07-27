@@ -1,8 +1,9 @@
-import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import { AppIcon as Ionicons } from '../../components/AppIcon';
+import { ChildBackground } from '../../components/ChildBackground';
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import React, { useCallback, useState } from "react";
 import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { getLetter, LetterRow, setLetterStatus } from "../../../src/repos/letters_repo"; // Importamos setLetterStatus
+import { getLetter, LetterRow, queueLetterForSync } from "../../../src/repos/letters_repo";
 
 export default function LetterMenuScreen() {
   const { letterId } = useLocalSearchParams<{ letterId: string }>();
@@ -10,22 +11,24 @@ export default function LetterMenuScreen() {
   const [letter, setLetter] = useState<LetterRow | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    loadLetter();
-  }, []);
-
-  async function loadLetter() {
+  const loadLetter = useCallback(async () => {
     if (!letterId) return;
     const data = await getLetter(letterId);
     setLetter(data);
     setLoading(false);
-  }
+  }, [letterId]);
+
+  useFocusEffect(useCallback(() => { void loadLetter(); }, [loadLetter]));
 
   // Verificar si todo está completo
   const isReadyToSend = letter && 
     letter.has_message === 1 && 
     (letter.photos_count || 0) > 0 && 
-    letter.has_drawing === 1;
+    letter.photos_count === letter.described_photos_count &&
+    letter.has_drawing === 1 &&
+    letter.has_drawing_description === 1 &&
+    (letter.answered_required_count || 0) === (letter.required_questions_count || 0) &&
+    ((letter.total_questions_count || 0) === 0 || (letter.answered_questions_count || 0) > 0);
 
   async function handleSend() {
     Alert.alert(
@@ -38,7 +41,7 @@ export default function LetterMenuScreen() {
           onPress: async () => {
             if (!letterId) return;
             // Cambiamos estado a 'PENDING_SYNC' para que la nube se la lleve
-            await setLetterStatus(letterId, 'PENDING_SYNC');
+            await queueLetterForSync(letterId);
             Alert.alert("¡Excelente!", "Carta marcada para envío. Sincroniza en el inicio para subirla.");
             router.back();
           }
@@ -52,6 +55,7 @@ export default function LetterMenuScreen() {
 
   return (
     <View style={styles.container}>
+      <ChildBackground />
       
       {/* HEADER */}
       <View style={styles.header}>
@@ -176,6 +180,25 @@ export default function LetterMenuScreen() {
           <Ionicons name="chevron-forward" size={20} color="#ccc" />
         </TouchableOpacity>
 
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={() => router.push(`/letter/${letterId}/questions`)}
+        >
+          <View style={[styles.iconCircle,
+            (letter.answered_required_count || 0) === (letter.required_questions_count || 0) &&
+            ((letter.total_questions_count || 0) === 0 || (letter.answered_questions_count || 0) > 0)
+              ? styles.completedCircle : styles.pendingCircle]}>
+            <Ionicons name="help-circle" size={24} color="#555" />
+          </View>
+          <View style={styles.actionTextContainer}>
+            <Text style={styles.actionTitle}>Preguntas al niño</Text>
+            <Text style={styles.actionSubtitle}>
+              {letter.answered_questions_count || 0} de {letter.total_questions_count || 0} respondidas
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color="#ccc" />
+        </TouchableOpacity>
+
         {/* --- BOTÓN DE ENVIAR (CONDICIONAL) --- */}
         {isReadyToSend ? (
           <TouchableOpacity style={styles.sendButton} onPress={handleSend}>
@@ -185,7 +208,7 @@ export default function LetterMenuScreen() {
         ) : (
           <View style={styles.lockedButton}>
             <Ionicons name="lock-closed-outline" size={20} color="#888" style={{marginRight: 8}} />
-            <Text style={styles.lockedText}>Completa las tareas para enviar</Text>
+            <Text style={styles.lockedText}>Completa tareas, preguntas y descripciones</Text>
           </View>
         )}
 
@@ -203,7 +226,7 @@ const styles = StyleSheet.create({
   header: { 
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', 
     paddingHorizontal: 20, paddingTop: 50, paddingBottom: 15, 
-    backgroundColor: 'white', elevation: 2, borderBottomWidth:1, borderBottomColor:'#eee'
+    backgroundColor: 'rgba(255,255,255,0.94)', elevation: 2, borderBottomWidth:1, borderBottomColor:'#eee'
   },
   backBtn: { padding: 5 },
   title: { fontSize: 18, fontWeight: '800', color: '#333' },

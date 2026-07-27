@@ -1,21 +1,25 @@
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon as Ionicons } from '../components/AppIcon';
+import { ChildBackground } from '../components/ChildBackground';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   Image,
+  KeyboardAvoidingView,
   PanResponder,
+  Platform,
   SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View
 } from 'react-native';
 import Svg, { Circle, Line, Path, Rect } from 'react-native-svg';
 import ViewShot from "react-native-view-shot";
-import { getDrawing, saveDrawingPath } from "../../src/repos/drawings_repo";
+import { getDrawingRecord, saveDrawingPath } from "../../src/repos/drawings_repo";
 
 // 🎨 EXTENDED COLOR PALETTE
 const COLORS = [
@@ -55,14 +59,16 @@ export default function DrawScreen() {
   
   const [saving, setSaving] = useState(false);
   const [existingImage, setExistingImage] = useState<string | null>(null);
+  const [description, setDescription] = useState("");
 
   // LOAD BACKGROUND IMAGE
   useEffect(() => {
     async function load() {
       if(!letterId) return;
-      const prevDrawing = await getDrawing(letterId);
+      const prevDrawing = await getDrawingRecord(letterId);
       if(prevDrawing) {
-        setExistingImage(prevDrawing);
+        setExistingImage(prevDrawing.file_path);
+        setDescription(prevDrawing.description);
       }
     }
     load();
@@ -124,11 +130,15 @@ export default function DrawScreen() {
   // 💾 SAVE FUNCTION
   const handleSave = async () => {
     if (!letterId || saving) return;
+    if (!description.trim()) {
+      Alert.alert("Descripción requerida", "Explica qué representa el dibujo antes de guardarlo.");
+      return;
+    }
     try {
       setSaving(true);
       // @ts-ignore
       const uri = await viewShotRef.current.capture();
-      await saveDrawingPath(letterId, uri);
+      await saveDrawingPath(letterId, uri, description);
       Alert.alert("Éxito", "Dibujo actualizado");
       router.back();
     } catch (error) {
@@ -239,6 +249,11 @@ export default function DrawScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      <KeyboardAvoidingView
+        style={styles.keyboardArea}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+      <ChildBackground />
       {/* 🛠️ TOP TOOLBAR */}
       <View style={styles.toolbar}>
         <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn}>
@@ -310,6 +325,12 @@ export default function DrawScreen() {
 
       {/* 🎛️ BOTTOM CONTROLS */}
       <View style={styles.bottomBar}>
+        <TextInput
+          value={description}
+          onChangeText={setDescription}
+          placeholder="¿Qué representa este dibujo?"
+          style={styles.descriptionInput}
+        />
         
         {/* Stroke Size Selector */}
         <View style={styles.strokeSelector}>
@@ -340,12 +361,14 @@ export default function DrawScreen() {
           ))}
         </ScrollView>
       </View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f4f4f4' },
+  keyboardArea: { flex: 1 },
   toolbar: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 10, paddingVertical: 10, paddingTop: 40,
@@ -366,6 +389,7 @@ const styles = StyleSheet.create({
   svg: { flex: 1 },
 
   bottomBar: { backgroundColor: 'white', padding: 10, borderTopLeftRadius: 15, borderTopRightRadius: 15, elevation: 10 },
+  descriptionInput: { backgroundColor: '#f2f4f6', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, marginBottom: 8 },
   strokeSelector: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, justifyContent: 'center' },
   strokeBtn: { width: 34, height: 34, justifyContent: 'center', alignItems: 'center', borderRadius: 17, borderWidth: 1, borderColor: '#ddd', marginHorizontal: 5 },
   activeStroke: { borderColor: '#007bff', backgroundColor: '#eef' },

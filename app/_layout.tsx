@@ -8,6 +8,7 @@ import { getMe, getSession } from "../src/repos/auth_repo";
 export default function RootLayout() {
   const router = useRouter();
   const segments = useSegments(); // para saber dónde estás
+  const firstSegment = segments[0];
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
@@ -15,7 +16,7 @@ export default function RootLayout() {
       await initDb();
 
       const session = await getSession();
-      const inAuth = segments[0] === "login"; // ruta login
+      const inAuth = firstSegment === "login"; // ruta login
 
       // 1) Si no hay sesión -> login
       if (!session) {
@@ -32,17 +33,11 @@ export default function RootLayout() {
         return;
       }
 
-      // 3) Redirecciones según rol
-      if (me.role === "ADMIN") {
-        if (segments[0] !== "admin") router.replace("/admin");
-      } else {
-        // TECH
-        if (segments[0] === "admin" || segments[0] === "login") router.replace("/");
-      }
+      if (firstSegment === "admin" || firstSegment === "login") router.replace("/");
 
       setReady(true);
     })();
-  }, [segments.join("/")]);
+  }, [firstSegment, router]);
 
   if (!ready) {
     return (
