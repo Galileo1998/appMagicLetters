@@ -1,8 +1,9 @@
-import { Ionicons } from '@expo/vector-icons';
+import { AppIcon as Ionicons } from '../../components/AppIcon';
+import { ChildBackground } from '../../components/ChildBackground';
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
 import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { getLetter, LetterRow, setLetterStatus } from "../../../src/repos/letters_repo";
+import { getLetter, LetterRow, queueLetterForSync } from "../../../src/repos/letters_repo";
 
 export default function LetterMenuScreen() {
   const { letterId } = useLocalSearchParams<{ letterId: string }>();
@@ -10,7 +11,6 @@ export default function LetterMenuScreen() {
   const [letter, setLetter] = useState<LetterRow | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // ✅ FUNCIÓN DE CARGA
   const loadLetter = useCallback(async () => {
     if (!letterId) return;
     const data = await getLetter(letterId);
@@ -18,18 +18,17 @@ export default function LetterMenuScreen() {
     setLoading(false);
   }, [letterId]);
 
-  // ✅ AUTO-REFRESCAR AL VOLVER
-  useFocusEffect(
-    useCallback(() => {
-      loadLetter();
-    }, [loadLetter])
-  );
+  useFocusEffect(useCallback(() => { void loadLetter(); }, [loadLetter]));
 
   // Verificar si todo está completo
   const isReadyToSend = letter && 
     letter.has_message === 1 && 
     (letter.photos_count || 0) > 0 && 
-    letter.has_drawing === 1;
+    letter.photos_count === letter.described_photos_count &&
+    letter.has_drawing === 1 &&
+    letter.has_drawing_description === 1 &&
+    (letter.answered_required_count || 0) === (letter.required_questions_count || 0) &&
+    ((letter.total_questions_count || 0) === 0 || (letter.answered_questions_count || 0) > 0);
 
   async function handleSend() {
     Alert.alert(
@@ -41,7 +40,8 @@ export default function LetterMenuScreen() {
           text: "Sí, Enviar", 
           onPress: async () => {
             if (!letterId) return;
-            await setLetterStatus(letterId, 'PENDING_SYNC');
+            // Cambiamos estado a 'PENDING_SYNC' para que la nube se la lleve
+            await queueLetterForSync(letterId);
             Alert.alert("¡Excelente!", "Carta marcada para envío. Sincroniza en el inicio para subirla.");
             router.back();
           }
@@ -50,26 +50,14 @@ export default function LetterMenuScreen() {
     );
   }
 
-  // 🎨 HELPER: Obtener color e icono según el tipo
-  const getTypeInfo = (type: string | null) => {
-    const t = (type || '').toLowerCase();
-    // Ajusta estos colores a tu gusto
-    if (t.includes('welcome')) return { label: 'BIENVENIDA', color: '#17a2b8', icon: 'hand-left' as const };
-    if (t.includes('reply')) return { label: 'RESPUESTA', color: '#28a745', icon: 'mail-open' as const };
-    if (t.includes('thank')) return { label: 'AGRADECIMIENTO', color: '#6f42c1', icon: 'heart' as const };
-    // Default
-    return { label: 'CARTA', color: '#666', icon: 'document-text' as const };
-  };
-
   if (loading) return <ActivityIndicator style={{ flex: 1 }} size="large" color="#1e62d0" />;
   if (!letter) return <View style={styles.center}><Text>Carta no encontrada</Text></View>;
 
-  const typeInfo = getTypeInfo(letter.letter_type);
-
   return (
     <View style={styles.container}>
+      <ChildBackground />
       
-      {/* HEADER PANTALLA */}
+      {/* HEADER */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={24} color="#333" />
@@ -82,28 +70,18 @@ export default function LetterMenuScreen() {
         
         {/* --- TARJETA DE DATOS --- */}
         <View style={styles.idCard}>
-          
-          {/* 🆕 CABECERA DE TARJETA CON TIPO */}
-          <View style={[styles.cardTopRow, { borderLeftWidth: 4, borderLeftColor: typeInfo.color }]}>
-            {/* Lado Izquierdo: Icono y Tipo */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                <View style={{ backgroundColor: typeInfo.color, padding: 8, borderRadius: 8 }}>
-                   <Ionicons name={typeInfo.icon} size={18} color="white" />
-                </View>
-                <View>
-                   <Text style={{ fontSize: 10, color: '#888', fontWeight: 'bold', letterSpacing: 0.5 }}>TIPO DE CARTA</Text>
-                   <Text style={{ fontSize: 14, fontWeight: '900', color: typeInfo.color }}>{typeInfo.label}</Text>
-                </View>
-            </View>
-
-            {/* Lado Derecho: ID Slip */}
+          <View style={styles.cardTopRow}>
             <View style={styles.tagContainer}>
               <View style={styles.iconBoxSmall}>
-                <Ionicons name="qr-code" size={12} color="white" />
+                <Ionicons name="qr-code" size={14} color="white" />
               </View>
               <Text style={styles.qrText}>
                 {letter.slip_id ? `#${letter.slip_id}` : "SIN ID"}
               </Text>
+            </View>
+            <View style={styles.dateTag}>
+              <Text style={styles.dateLabel}>Límite:</Text>
+              <Text style={styles.dateText}>{letter.due_date || "--/--/--"}</Text>
             </View>
           </View>
 
@@ -135,17 +113,8 @@ export default function LetterMenuScreen() {
             <Text style={styles.childIdText}>{letter.child_code}</Text>
           </View>
 
-          {/* PIE DE TARJETA REORGANIZADO */}
           <View style={styles.cardFooter}>
-            
-            {/* Fecha Límite (Movida aquí) */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-               <Ionicons name="calendar-outline" size={14} color="#888" />
-               <Text style={styles.footerLabel}>Vence:</Text>
-               <Text style={{ fontWeight: 'bold', color: '#d9534f' }}>{letter.due_date || "--/--"}</Text>
-            </View>
-
-            {/* Estado */}
+            <Text style={styles.footerLabel}>Estado:</Text>
             <View style={[
               styles.statusBadge, 
               { backgroundColor: letter.status === 'SYNCED' ? '#d4edda' : (letter.status === 'PENDING_SYNC' ? '#fff3cd' : '#e2e6ea') }
@@ -211,16 +180,35 @@ export default function LetterMenuScreen() {
           <Ionicons name="chevron-forward" size={20} color="#ccc" />
         </TouchableOpacity>
 
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={() => router.push(`/letter/${letterId}/questions`)}
+        >
+          <View style={[styles.iconCircle,
+            (letter.answered_required_count || 0) === (letter.required_questions_count || 0) &&
+            ((letter.total_questions_count || 0) === 0 || (letter.answered_questions_count || 0) > 0)
+              ? styles.completedCircle : styles.pendingCircle]}>
+            <Ionicons name="help-circle" size={24} color="#555" />
+          </View>
+          <View style={styles.actionTextContainer}>
+            <Text style={styles.actionTitle}>Preguntas al niño</Text>
+            <Text style={styles.actionSubtitle}>
+              {letter.answered_questions_count || 0} de {letter.total_questions_count || 0} respondidas
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color="#ccc" />
+        </TouchableOpacity>
+
         {/* --- BOTÓN DE ENVIAR (CONDICIONAL) --- */}
         {isReadyToSend ? (
           <TouchableOpacity style={styles.sendButton} onPress={handleSend}>
             <Ionicons name="paper-plane" size={24} color="white" style={{marginRight: 10}} />
-            <Text style={styles.sendButtonText}>PREPARAR PARA ENVÍO</Text>
+            <Text style={styles.sendButtonText}>ENVIAR CARTA</Text>
           </TouchableOpacity>
         ) : (
           <View style={styles.lockedButton}>
             <Ionicons name="lock-closed-outline" size={20} color="#888" style={{marginRight: 8}} />
-            <Text style={styles.lockedText}>Completa las tareas para enviar</Text>
+            <Text style={styles.lockedText}>Completa tareas, preguntas y descripciones</Text>
           </View>
         )}
 
@@ -238,7 +226,7 @@ const styles = StyleSheet.create({
   header: { 
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', 
     paddingHorizontal: 20, paddingTop: 50, paddingBottom: 15, 
-    backgroundColor: 'white', elevation: 2, borderBottomWidth:1, borderBottomColor:'#eee'
+    backgroundColor: 'rgba(255,255,255,0.94)', elevation: 2, borderBottomWidth:1, borderBottomColor:'#eee'
   },
   backBtn: { padding: 5 },
   title: { fontSize: 18, fontWeight: '800', color: '#333' },
@@ -253,13 +241,16 @@ const styles = StyleSheet.create({
   },
   cardTopRow: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    backgroundColor: '#fff', paddingHorizontal: 15, paddingVertical: 12,
+    backgroundColor: '#f8f9fa', paddingHorizontal: 15, paddingVertical: 12,
     borderBottomWidth: 1, borderBottomColor: '#eee'
   },
-  tagContainer: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  iconBoxSmall: { backgroundColor: '#333', borderRadius: 6, padding: 3 },
+  tagContainer: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  iconBoxSmall: { backgroundColor: '#333', borderRadius: 6, padding: 4 },
   qrText: { fontWeight: 'bold', color: '#333', fontSize: 14 },
-  
+  dateTag: { flexDirection: 'row', alignItems: 'baseline', gap: 5 },
+  dateLabel: { fontSize: 11, color: '#888' },
+  dateText: { fontSize: 13, color: '#d9534f', fontWeight: 'bold' },
+
   mainInfo: { padding: 20, paddingBottom: 5 },
   labelSmall: { fontSize: 10, color: '#999', fontWeight: 'bold', marginBottom: 2, letterSpacing: 0.5 },
   childName: { fontSize: 20, fontWeight: '900', color: '#222', marginBottom: 6 },

@@ -2,6 +2,7 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import { ChildBackground } from "../../components/ChildBackground";
 import { initDb } from "../../../src/db";
 import { getLetter } from "../../../src/repos/letters_repo";
 import { normalizeParam } from "../../../src/utils/route";
@@ -28,6 +29,7 @@ export default function OptionsScreen() {
 
   return (
     <View style={styles.container}>
+      <ChildBackground />
       <Text style={styles.title}>Opciones</Text>
       <Text style={styles.sub}>Carta: {letterId}</Text>
       <Text style={styles.sub}>Niño/a: {childCode}</Text>

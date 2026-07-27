@@ -1,4 +1,6 @@
 import { getDb } from "../db";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { apiFetch } from "../services/api";
 
 function nowISO() {
   return new Date().toISOString();
@@ -56,12 +58,39 @@ export async function loginByPhone(phoneRaw: string): Promise<UserRow> {
   return user;
 }
 
+export async function saveAuthenticatedUser(user: {
+  id: string;
+  name: string;
+  phone: string;
+  role: "TECH";
+}): Promise<UserRow> {
+  const db = await getDb();
+  const now = nowISO();
+  await db.runAsync(
+    `INSERT INTO users (id, role, name, email, phone, is_protected, created_at, updated_at)
+     VALUES (?, 'TECH', ?, NULL, ?, 0, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET name=excluded.name, phone=excluded.phone, updated_at=excluded.updated_at`,
+    [user.id, user.name, user.phone, now, now]
+  );
+  await db.runAsync(
+    `INSERT OR REPLACE INTO session (id, user_id, logged_in_at) VALUES (1, ?, ?)`,
+    [user.id, now]
+  );
+  return (await getMe())!;
+}
+
 // === CAMBIO IMPORTANTE AQUÍ ===
 
 // Función 1: Solo cierra la sesión (NO borra cartas)
 export async function logout() {
   const db = await getDb();
+  try {
+    await apiFetch("logout.php", { method: "POST" });
+  } catch {
+    // El cierre local debe funcionar aun sin señal.
+  }
   await db.runAsync(`DELETE FROM session WHERE id=1;`);
+  await AsyncStorage.multiRemove(["api_token", "user_phone", "user_id"]);
 }
 
 // Función 2: Borra los datos locales (Solo se usa si cambia el técnico)

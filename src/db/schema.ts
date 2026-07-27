@@ -23,32 +23,17 @@ CREATE TABLE IF NOT EXISTS local_letters (
       local_id TEXT PRIMARY KEY,
       server_id TEXT NULL,
       slip_id TEXT NULL,
-      
-      -- Datos del Niño/Carta
       child_code TEXT NOT NULL,
       child_name TEXT NULL,
       village TEXT NULL,
-      community_id TEXT NULL,       -- 🆕 ID Comunidad (Ej: 4089)
       contact_name TEXT NULL,
-      
-      -- Tipos y Fechas
-      letter_type TEXT NULL,        -- 🆕 (Welcome, Reply, Thank You)
-      due_date TEXT NULL,           -- Fecha PDF
-      technician_due_date TEXT NULL,-- 🆕 Fecha Calculada para Técnico
-      
-      -- Estado y Flujo
+      due_date TEXT NULL,
       status TEXT NOT NULL,
       return_reason TEXT NULL,
-      
-      -- Contenido Actual (Lo que el técnico escribe ahora)
       message_content TEXT,
-      
-      -- 🆕 DATOS PREVIOS (Para editar si fue RETURNED)
-      prev_message TEXT NULL,       -- Mensaje anterior devuelto
-      prev_photos TEXT NULL,        -- JSON string con URLs de fotos anteriores
-      prev_drawing TEXT NULL,       -- URL del dibujo anterior
-      
       local_user_phone TEXT,
+      submission_id TEXT NULL,
+      sync_error TEXT NULL,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -58,6 +43,7 @@ CREATE TABLE IF NOT EXISTS photos (
   letter_id TEXT NOT NULL,
   slot INTEGER NOT NULL,
   file_path TEXT NOT NULL, 
+  description TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL,
   updated_at TEXT NULL,
   FOREIGN KEY (letter_id) REFERENCES local_letters(local_id) ON DELETE CASCADE
@@ -67,6 +53,7 @@ CREATE TABLE IF NOT EXISTS local_drawings (
   id TEXT PRIMARY KEY,
   local_letter_id TEXT NOT NULL,
   file_path TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
   sha256 TEXT NULL,
   created_at TEXT NOT NULL,
   FOREIGN KEY (local_letter_id) REFERENCES local_letters(local_id) ON DELETE CASCADE
@@ -82,4 +69,23 @@ CREATE TABLE IF NOT EXISTS sync_queue (
   next_retry_at TEXT NULL,
   created_at TEXT NOT NULL
 );
-`;
+
+CREATE TABLE IF NOT EXISTS questions (
+  id INTEGER PRIMARY KEY,
+  question_text TEXT NOT NULL,
+  help_text TEXT NULL,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  is_required INTEGER NOT NULL DEFAULT 1,
+  updated_at TEXT NULL
+);
+
+CREATE TABLE IF NOT EXISTS letter_answers (
+  letter_id TEXT NOT NULL,
+  question_id INTEGER NOT NULL,
+  question_text TEXT NOT NULL,
+  answer_text TEXT NOT NULL DEFAULT '',
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (letter_id, question_id),
+  FOREIGN KEY (letter_id) REFERENCES local_letters(local_id) ON DELETE CASCADE
+);
+`; 
