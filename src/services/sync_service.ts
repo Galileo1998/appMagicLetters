@@ -22,6 +22,9 @@ async function cacheRemoteFile(url: string, prefix: string) {
   return result.uri;
 }
 
+type PushResult = { uploaded: number; failed: number };
+let pushInFlight: Promise<PushResult> | null = null;
+
 export const syncService = {
   async pullAssignedLetters() {
     const response = await apiFetch("get_assigned_letters.php", {
@@ -80,6 +83,9 @@ export const syncService = {
   },
 
   async pushPendingLetters() {
+    if (pushInFlight) return pushInFlight;
+
+    pushInFlight = (async () => {
     const db = await getDb();
     const pending = await db.getAllAsync<{
       local_id: string;
@@ -143,5 +149,12 @@ export const syncService = {
       }
     }
     return { uploaded, failed };
+    })();
+
+    try {
+      return await pushInFlight;
+    } finally {
+      pushInFlight = null;
+    }
   },
 };

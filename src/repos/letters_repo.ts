@@ -200,7 +200,11 @@ export async function queueLetterForSync(localId: string) {
   const submissionId = `${localId}-${Date.now()}`;
   await db.runAsync(
     `UPDATE local_letters
-     SET status='PENDING_SYNC', submission_id=?, sync_error=NULL, updated_at=datetime('now')
+     SET submission_id=CASE
+           WHEN status='PENDING_SYNC' AND submission_id IS NOT NULL THEN submission_id
+           ELSE ?
+         END,
+         status='PENDING_SYNC', sync_error=NULL, updated_at=datetime('now')
      WHERE local_id=?`,
     [submissionId, localId]
   );

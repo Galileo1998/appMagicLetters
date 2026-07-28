@@ -1,12 +1,28 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { API_BASE_URL } from "../config";
 
-export async function apiFetch(path: string, init: RequestInit = {}) {
+export async function apiFetch(path: string, init: RequestInit = {}, timeoutMs = 120_000) {
   const token = await AsyncStorage.getItem("api_token");
   const headers = new Headers(init.headers);
   headers.set("Accept", "application/json");
   if (token) headers.set("Authorization", `Bearer ${token}`);
-  return fetch(`${API_BASE_URL}/${path}`, { ...init, headers });
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(`${API_BASE_URL}/${path}`, {
+      ...init,
+      headers,
+      signal: init.signal ?? controller.signal,
+    });
+  } catch (error: any) {
+    if (controller.signal.aborted) {
+      throw new Error("La conexión tardó demasiado. Se intentará nuevamente.");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export async function loginRemote(phone: string, pin: string) {

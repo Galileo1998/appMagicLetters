@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { initDb } from "../src/db";
 import { getMe, getSession } from "../src/repos/auth_repo";
+import { startAutomaticSync } from "../src/services/automatic_sync";
 
 export default function RootLayout() {
   const router = useRouter();
@@ -38,6 +39,11 @@ export default function RootLayout() {
       setReady(true);
     })();
   }, [firstSegment, router]);
+
+  useEffect(() => {
+    if (!ready) return;
+    return startAutomaticSync();
+  }, [ready]);
 
   if (!ready) {
     return (

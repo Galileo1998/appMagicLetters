@@ -4,6 +4,7 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
 import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { getLetter, LetterRow, queueLetterForSync } from "../../../src/repos/letters_repo";
+import { requestAutomaticSync } from "../../../src/services/automatic_sync";
 
 export default function LetterMenuScreen() {
   const { letterId } = useLocalSearchParams<{ letterId: string }>();
@@ -43,7 +44,11 @@ export default function LetterMenuScreen() {
             if (!letterId) return;
             // Cambiamos estado a 'PENDING_SYNC' para que la nube se la lleve
             await queueLetterForSync(letterId);
-            Alert.alert("¡Excelente!", "Carta marcada para envío. Sincroniza en el inicio para subirla.");
+            requestAutomaticSync();
+            Alert.alert(
+              "¡Excelente!",
+              "Carta guardada para envío. Si hay internet se enviará automáticamente; si no, quedará pendiente hasta recuperar la señal."
+            );
             router.back();
           }
         }

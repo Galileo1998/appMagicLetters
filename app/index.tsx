@@ -1,7 +1,7 @@
 import { AppIcon as Ionicons } from './components/AppIcon';
 import { ChildBackground } from './components/ChildBackground';
 import { useFocusEffect, useRouter } from 'expo-router'; // 👈 AGREGADO: useFocusEffect
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -17,6 +17,7 @@ import { initDb } from '../src/db';
 import { getMe, logout, UserRow } from '../src/repos/auth_repo';
 import { LetterRow, listLetters } from '../src/repos/letters_repo';
 import { syncService } from '../src/services/sync_service';
+import { subscribeToAutomaticSync } from '../src/services/automatic_sync';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -56,6 +57,12 @@ export default function HomeScreen() {
       loadData();
     }, [loadData])
   );
+
+  useEffect(() => {
+    return subscribeToAutomaticSync(() => {
+      void loadData();
+    });
+  }, [loadData]);
 
   const handleSync = async () => {
     setSyncing(true);
