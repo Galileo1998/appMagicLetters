@@ -19,6 +19,7 @@ export type LetterRow = {
   submission_id?: string | null;
   sync_error?: string | null;
   return_reason?: string | null;
+  photo_required: number;
   local_user_phone?: string | null; // ✅ Nueva columna
   created_at: string;
   updated_at: string;
@@ -160,10 +161,10 @@ export async function saveSyncedLetter(data: any, userPhone: string): Promise<st
              WHEN status='PENDING_SYNC' THEN status
              ELSE ?
            END,
-           return_reason=?, updated_at=?
+           return_reason=?, photo_required=?, updated_at=?
        WHERE local_id=?`,
       [data.slip_id, data.child_nbr || data.child_code, data.child_name, data.village,
-       data.contact_name, data.due_date, status, status, reason, t, existing.local_id]
+       data.contact_name, data.due_date, status, status, reason, Number(data.photo_required ?? 1), t, existing.local_id]
     );
     return existing.local_id;
   } else {
@@ -171,12 +172,12 @@ export async function saveSyncedLetter(data: any, userPhone: string): Promise<st
     await db.runAsync(
       `INSERT INTO local_letters (
         local_id, server_id, slip_id, child_code, child_name, village, contact_name, due_date,
-        status, return_reason, message_content, local_user_phone, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?, ?)`,
+        status, return_reason, message_content, local_user_phone, photo_required, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?, ?, ?)`,
       [
         newLocalId, String(data.id), data.slip_id, data.child_nbr || data.child_code, 
         data.child_name, data.village, data.contact_name, data.due_date, status, reason, 
-        userPhone, // ✅ Aquí guardamos al dueño de la carta
+        userPhone, Number(data.photo_required ?? 1), // ✅ Aquí guardamos al dueño de la carta
         t, t
       ]
     );
@@ -226,5 +227,13 @@ export async function updateLetterMessage(localId: string, text: string) {
   await db.runAsync(
     `UPDATE local_letters SET message_content = ?, updated_at = datetime('now') WHERE local_id = ?`,
     [text, localId]
+  );
+}
+
+export async function setPhotoRequired(localId: string, required: boolean) {
+  const db = await getDb();
+  await db.runAsync(
+    `UPDATE local_letters SET photo_required=?, updated_at=datetime('now') WHERE local_id=?`,
+    [required ? 1 : 0, localId]
   );
 }

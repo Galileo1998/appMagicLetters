@@ -1,7 +1,7 @@
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
 // 1. IMPORTAR IMAGE
-import { Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { initDb } from "../src/db";
 import { saveAuthenticatedUser } from "../src/repos/auth_repo";
 import { loginRemote } from "../src/services/api";
@@ -12,9 +12,12 @@ export default function Login() {
   const [phone, setPhone] = useState("");
   const [pin, setPin] = useState("");
   const [err, setErr] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   async function onLogin() {
     try {
+      if (submitting) return;
+      setSubmitting(true);
       setErr(null);
       await initDb();
       const p = phone.trim();
@@ -25,6 +28,8 @@ export default function Login() {
 
     } catch (e: any) {
       setErr(e?.message || "Se necesita conexión para el primer inicio de sesión.");
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -62,8 +67,8 @@ export default function Login() {
 
       {err ? <Text style={styles.err}>{err}</Text> : null}
 
-      <Pressable style={styles.btn} onPress={onLogin}>
-        <Text style={styles.btnText}>Entrar</Text>
+      <Pressable style={[styles.btn, submitting && {opacity:.65}]} onPress={onLogin} disabled={submitting}>
+        {submitting ? <ActivityIndicator color="white" /> : <Text style={styles.btnText}>Entrar</Text>}
       </Pressable>
 
       <Text style={styles.hint}>El primer acceso requiere señal. Después podrás trabajar sin conexión.</Text>

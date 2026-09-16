@@ -2,8 +2,8 @@ import { AppIcon as Ionicons } from '../../components/AppIcon';
 import { ChildBackground } from '../../components/ChildBackground';
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
-import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { getLetter, LetterRow, queueLetterForSync } from "../../../src/repos/letters_repo";
+import { ActivityIndicator, Alert, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from "react-native";
+import { getLetter, LetterRow, queueLetterForSync, setPhotoRequired } from "../../../src/repos/letters_repo";
 import { requestAutomaticSync } from "../../../src/services/automatic_sync";
 
 export default function LetterMenuScreen() {
@@ -24,7 +24,7 @@ export default function LetterMenuScreen() {
   // Verificar si todo está completo
   const isReadyToSend = letter && 
     letter.has_message === 1 && 
-    (letter.photos_count || 0) > 0 && 
+    (letter.photo_required === 0 || (letter.photos_count || 0) > 0) &&
     letter.photos_count === letter.described_photos_count &&
     letter.has_drawing === 1 &&
     letter.has_drawing_description === 1 &&
@@ -58,6 +58,8 @@ export default function LetterMenuScreen() {
 
   if (loading) return <ActivityIndicator style={{ flex: 1 }} size="large" color="#1e62d0" />;
   if (!letter) return <View style={styles.center}><Text>Carta no encontrada</Text></View>;
+
+  const canEdit = ["DRAFT", "ASSIGNED", "RETURNED"].includes(letter.status);
 
   return (
     <View style={styles.container}>
@@ -138,6 +140,34 @@ export default function LetterMenuScreen() {
         {/* --- TAREAS --- */}
         <Text style={styles.sectionHeader}>TAREAS A REALIZAR</Text>
 
+        {canEdit ? (
+          <View style={[styles.photoRequirementCard, letter.photo_required === 0 && styles.photoRequirementOptional]}>
+            <View style={styles.photoRequirementText}>
+              <Text style={styles.photoRequirementTitle}>Exigir fotografía</Text>
+              <Text style={styles.photoRequirementHint}>
+                {letter.photo_required === 0
+                  ? "Desactivado: esta carta puede enviarse sin fotos"
+                  : "Activado: debe agregar de 1 a 3 fotografías"}
+              </Text>
+            </View>
+            <Switch
+              accessibilityLabel="Exigir fotografía para esta carta"
+              value={letter.photo_required !== 0}
+              trackColor={{ false: '#8bcfbd', true: '#efc45d' }}
+              thumbColor={letter.photo_required !== 0 ? '#d99500' : '#278f75'}
+              onValueChange={async (required) => {
+                setLetter((current) => current ? { ...current, photo_required: required ? 1 : 0 } : current);
+                try {
+                  await setPhotoRequired(letter.local_id, required);
+                } catch {
+                  setLetter((current) => current ? { ...current, photo_required: required ? 0 : 1 } : current);
+                  Alert.alert("No se pudo guardar", "Intenta cambiar nuevamente la opción.");
+                }
+              }}
+            />
+          </View>
+        ) : null}
+
         <TouchableOpacity 
           style={styles.actionButton} 
           onPress={() => router.push(`/letter/${letterId}/message`)}
@@ -158,13 +188,15 @@ export default function LetterMenuScreen() {
           style={styles.actionButton}
           onPress={() => router.push(`/letter/${letterId}/photo`)}
         >
-          <View style={[styles.iconCircle, (letter.photos_count || 0) > 0 ? styles.completedCircle : styles.pendingCircle]}>
-            <Ionicons name={(letter.photos_count || 0) > 0 ? "checkmark" : "camera"} size={24} color={(letter.photos_count || 0) > 0 ? "#fff" : "#555"} />
+          <View style={[styles.iconCircle, (letter.photo_required === 0 || (letter.photos_count || 0) > 0) ? styles.completedCircle : styles.pendingCircle]}>
+            <Ionicons name={(letter.photo_required === 0 || (letter.photos_count || 0) > 0) ? "checkmark" : "camera"} size={24} color={(letter.photo_required === 0 || (letter.photos_count || 0) > 0) ? "#fff" : "#555"} />
           </View>
           <View style={styles.actionTextContainer}>
             <Text style={styles.actionTitle}>Fotografías</Text>
             <Text style={styles.actionSubtitle}>
-              {(letter.photos_count || 0) > 0 ? `✅ ${letter.photos_count} fotos listas` : "Tomar foto del niño/a"}
+              {letter.photo_required === 0
+                ? ((letter.photos_count || 0) > 0 ? `Opcional · ${letter.photos_count} fotos agregadas` : "✅ No obligatoria para esta carta")
+                : ((letter.photos_count || 0) > 0 ? `✅ ${letter.photos_count} fotos listas` : "Obligatoria · agregar de 1 a 3")}
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={20} color="#ccc" />
@@ -303,6 +335,15 @@ const styles = StyleSheet.create({
 
   // --- BOTONES ACCIONES ---
   sectionHeader: { fontSize: 13, fontWeight: 'bold', color: '#888', marginBottom: 10, marginLeft: 5, marginTop: 5 },
+  photoRequirementCard: {
+    flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff8e6',
+    borderWidth: 1, borderColor: '#f0cf76', borderRadius: 16,
+    padding: 15, marginBottom: 12
+  },
+  photoRequirementOptional: { backgroundColor: '#eef8f5', borderColor: '#9bd8c7' },
+  photoRequirementText: { flex: 1, paddingRight: 12 },
+  photoRequirementTitle: { fontSize: 15, fontWeight: '900', color: '#28333d' },
+  photoRequirementHint: { fontSize: 12, color: '#67737d', marginTop: 3, lineHeight: 17 },
   
   actionButton: {
     flexDirection: 'row', alignItems: 'center',

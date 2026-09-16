@@ -9,10 +9,10 @@ import {
   Alert,
   Button,
   Image,
-  ScrollView,
+  ScrollView, Switch,
   StyleSheet, Text, TextInput, TouchableOpacity, View
 } from 'react-native';
-import { getLetter, LetterRow } from '../../../src/repos/letters_repo';
+import { getLetter, LetterRow, setPhotoRequired } from '../../../src/repos/letters_repo';
 import { addPhoto, deletePhoto, listPhotos, PhotoRow, updatePhotoDescription } from '../../../src/repos/photos_repo';
 
 export default function PhotoScreen() {
@@ -28,6 +28,7 @@ export default function PhotoScreen() {
   const [pendingUri, setPendingUri] = useState<string | null>(null);
   const [pendingDescription, setPendingDescription] = useState("");
   const [letterStatus, setLetterStatus] = useState<LetterRow["status"] | null>(null);
+  const [photoRequired, setPhotoRequiredState] = useState(true);
   const canEdit = letterStatus !== null &&
     ["DRAFT", "ASSIGNED", "RETURNED"].includes(letterStatus);
 
@@ -40,6 +41,7 @@ export default function PhotoScreen() {
         ]);
         setPhotos(list);
         setLetterStatus(letter?.status ?? null);
+        setPhotoRequiredState(Number(letter?.photo_required ?? 1) === 1);
     } catch(e) { console.error(e); }
   }, [letterId]);
 
@@ -78,6 +80,34 @@ export default function PhotoScreen() {
         </View>
 
         <ScrollView contentContainerStyle={styles.galleryContent}>
+            {canEdit ? (
+              <View
+                style={[styles.requirementCard, !photoRequired && styles.requirementOptional]}
+              >
+                <View style={[styles.requirementIcon, !photoRequired && styles.requirementIconOptional]}>
+                  <Ionicons name={photoRequired ? "camera" : "camera-outline"} size={22} color="white" />
+                </View>
+                <View style={styles.requirementText}>
+                  <Text style={styles.requirementTitle}>{photoRequired ? "Fotografía requerida" : "Fotografía no obligatoria"}</Text>
+                  <Text style={styles.requirementHint}>{photoRequired ? "Debe agregar entre 1 y 3 fotografías" : "Puede enviar esta carta sin fotografías"}</Text>
+                </View>
+                <Switch
+                  accessibilityLabel="Exigir fotografía para esta carta"
+                  value={photoRequired}
+                  trackColor={{ false: '#8bcfbd', true: '#efc45d' }}
+                  thumbColor={photoRequired ? '#d99500' : '#278f75'}
+                  onValueChange={async (next) => {
+                    setPhotoRequiredState(next);
+                    try {
+                      await setPhotoRequired(letterId!, next);
+                    } catch {
+                      setPhotoRequiredState(!next);
+                      Alert.alert('No se pudo guardar', 'Intenta cambiar nuevamente la opción.');
+                    }
+                  }}
+                />
+              </View>
+            ) : null}
             {pendingUri && canEdit ? (
               <View style={styles.descriptionCard}>
                 <Image source={{ uri: pendingUri }} style={styles.preview} />
@@ -232,6 +262,13 @@ const styles = StyleSheet.create({
   title: { fontSize: 18, fontWeight: 'bold' },
   
   galleryContent: { padding: 20, paddingBottom: 110 },
+  requirementCard: { flexDirection:'row', alignItems:'center', backgroundColor:'#fff8e6', borderWidth:1, borderColor:'#f0cf76', borderRadius:14, padding:13, marginBottom:16 },
+  requirementOptional: { backgroundColor:'#eef8f5', borderColor:'#9bd8c7' },
+  requirementIcon: { width:42, height:42, borderRadius:12, backgroundColor:'#e0a522', alignItems:'center', justifyContent:'center' },
+  requirementIconOptional: { backgroundColor:'#46B094' },
+  requirementText: { flex:1, marginHorizontal:11 },
+  requirementTitle: { fontWeight:'900', color:'#28333d', fontSize:14 },
+  requirementHint: { color:'#67737d', fontSize:12, marginTop:3 },
   emptyState: { alignItems: 'center', marginTop: 100 },
   
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },

@@ -5,7 +5,7 @@ import { getMe } from "../repos/auth_repo";
 import * as lettersRepo from "../repos/letters_repo";
 import { listPhotos, upsertReturnedPhoto } from "../repos/photos_repo";
 import { listAnswers, replaceQuestions } from "../repos/questions_repo";
-import { apiFetch } from "./api";
+import { apiFetch, readJsonResponse } from "./api";
 
 function asFileUri(path: string) {
   return path.startsWith("file://") ? path : `file://${path}`;
@@ -32,7 +32,7 @@ export const syncService = {
       headers: { "Content-Type": "application/json" },
       body: "{}",
     });
-    const payload = await response.json();
+    const payload = await readJsonResponse(response);
     if (!response.ok) throw new Error(payload.error || `Error de descarga (${response.status})`);
 
     await replaceQuestions(Array.isArray(payload.questions) ? payload.questions : []);
@@ -92,8 +92,9 @@ export const syncService = {
       server_id: string;
       submission_id: string | null;
       message_content: string | null;
+      photo_required: number;
     }>(
-      `SELECT local_id, server_id, submission_id, message_content
+      `SELECT local_id, server_id, submission_id, message_content, photo_required
        FROM local_letters WHERE status='PENDING_SYNC' ORDER BY updated_at`
     );
 
@@ -110,6 +111,7 @@ export const syncService = {
         form.append("server_id", letter.server_id);
         form.append("submission_id", submissionId);
         form.append("message", letter.message_content ?? "");
+        form.append("photo_required", letter.photo_required === 0 ? "0" : "1");
 
         const drawing = await getDrawingRecord(letter.local_id);
         if (drawing) {
@@ -136,7 +138,7 @@ export const syncService = {
         form.append("answers", JSON.stringify(await listAnswers(letter.local_id)));
 
         const response = await apiFetch("upload_letter.php", { method: "POST", body: form });
-        const result = await response.json();
+        const result = await readJsonResponse(response);
         if (!response.ok || !result.success) {
           throw new Error(result.error || `Error de envío (${response.status})`);
         }

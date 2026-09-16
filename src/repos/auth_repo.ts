@@ -1,6 +1,7 @@
 import { getDb } from "../db";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { apiFetch } from "../services/api";
+import NetInfo from "@react-native-community/netinfo";
 
 function nowISO() {
   return new Date().toISOString();
@@ -82,12 +83,38 @@ export async function saveAuthenticatedUser(user: {
 // === CAMBIO IMPORTANTE AQUÍ ===
 
 // Función 1: Solo cierra la sesión (NO borra cartas)
-export async function logout() {
+export async function getLogoutBlockReason(userPhone?: string | null): Promise<string | null> {
+  const network = await NetInfo.fetch();
+  const online = network.isConnected === true && network.isInternetReachable !== false;
+  if (!online) {
+    return "No puedes cerrar sesión sin conexión. Conserva la sesión para seguir trabajando en campo.";
+  }
+
+  const db = await getDb();
+  const pending = await db.getFirstAsync<{ total: number }>(
+    `SELECT COUNT(*) AS total FROM local_letters
+     WHERE status='PENDING_SYNC' AND (? IS NULL OR local_user_phone=?)`,
+    [userPhone ?? null, userPhone ?? null]
+  );
+  if (Number(pending?.total ?? 0) > 0) {
+    return `Tienes ${Number(pending?.total)} carta(s) pendiente(s) de subir. Sincroniza antes de cerrar sesión.`;
+  }
+  return null;
+}
+
+export async function logout(options: { force?: boolean; userPhone?: string | null } = {}) {
+  if (!options.force) {
+    const reason = await getLogoutBlockReason(options.userPhone);
+    if (reason) throw new Error(reason);
+  }
   const db = await getDb();
   try {
-    await apiFetch("logout.php", { method: "POST" });
+    const response = await apiFetch("logout.php", { method: "POST" }, 20_000);
+    if (!response.ok && !options.force) throw new Error("El servidor no confirmó el cierre de sesión.");
   } catch {
-    // El cierre local debe funcionar aun sin señal.
+    if (!options.force) {
+      throw new Error("La conexión falló. Por seguridad, la sesión permanece abierta en la aplicación.");
+    }
   }
   await db.runAsync(`DELETE FROM session WHERE id=1;`);
   await AsyncStorage.multiRemove(["api_token", "user_phone", "user_id"]);

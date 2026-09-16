@@ -1,6 +1,7 @@
 import { AppIcon as Ionicons } from './components/AppIcon';
 import { ChildBackground } from './components/ChildBackground';
 import { useFocusEffect, useRouter } from 'expo-router'; // 👈 AGREGADO: useFocusEffect
+import { useNetInfo } from '@react-native-community/netinfo';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -14,7 +15,7 @@ import {
 } from 'react-native';
 
 import { initDb } from '../src/db';
-import { getMe, logout, UserRow } from '../src/repos/auth_repo';
+import { getLogoutBlockReason, getMe, logout, UserRow } from '../src/repos/auth_repo';
 import { LetterRow, listLetters } from '../src/repos/letters_repo';
 import { syncService } from '../src/services/sync_service';
 import { subscribeToAutomaticSync } from '../src/services/automatic_sync';
@@ -25,6 +26,8 @@ export default function HomeScreen() {
   const [user, setUser] = useState<UserRow | null>(null);
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const network = useNetInfo();
+  const isOffline = network.isConnected === false || network.isInternetReachable === false;
 
   // ✅ CARGA DE DATOS: Se ejecuta al entrar y al volver a la pantalla
   const loadData = useCallback(async () => {
@@ -90,7 +93,7 @@ export default function HomeScreen() {
         /autenticaci|token.+(?:inv[aá]lido|vencido)/i.test(connectionError)
       );
       if (authenticationExpired) {
-        await logout();
+        await logout({ force: true });
         if (router.canGoBack()) router.dismissAll();
         router.replace("/login");
         Alert.alert(
@@ -112,7 +115,12 @@ export default function HomeScreen() {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    const blocked = await getLogoutBlockReason(user?.phone);
+    if (blocked) {
+      Alert.alert("No se puede cerrar sesión", blocked);
+      return;
+    }
     Alert.alert(
       "Cerrar Sesión",
       "¿Seguro que quieres salir?",
@@ -123,12 +131,11 @@ export default function HomeScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              await logout(); 
+              await logout({ userPhone: user?.phone });
               if (router.canGoBack()) router.dismissAll();
               router.replace('/login');
-            } catch (error) {
-              console.error("Error al salir:", error);
-              router.replace('/login');
+            } catch (error: any) {
+              Alert.alert("No se pudo cerrar sesión", error?.message || "Verifica la conexión e intenta nuevamente.");
             }
           }
         }
@@ -244,6 +251,13 @@ export default function HomeScreen() {
         </View>
       </View>
 
+      {isOffline ? (
+        <View style={styles.offlineBanner}>
+          <Ionicons name="cloud-offline-outline" size={18} color="#7a5600" />
+          <Text style={styles.offlineText}>Sin conexión · puedes seguir trabajando. Las cartas se enviarán automáticamente al volver la red.</Text>
+        </View>
+      ) : null}
+
       <FlatList
         data={letters}
         keyExtractor={(item) => item.local_id}
@@ -292,5 +306,7 @@ const styles = StyleSheet.create({
   progressRow: { flexDirection: 'row', marginTop: 15, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#f0f0f0', justifyContent: 'space-around' },
   progressItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   emptyState: { alignItems: 'center', marginTop: 50 },
-  fab: { position: 'absolute', right: 20, bottom: 30, backgroundColor: '#1e62d0', width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center', elevation: 5 }
+  fab: { position: 'absolute', right: 20, bottom: 30, backgroundColor: '#1e62d0', width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center', elevation: 5 },
+  offlineBanner: { flexDirection:'row', alignItems:'center', gap:8, paddingHorizontal:16, paddingVertical:10, backgroundColor:'#fff3cd', borderBottomWidth:1, borderBottomColor:'#f0d98b' },
+  offlineText: { flex:1, color:'#725300', fontWeight:'700', fontSize:12, lineHeight:17 }
 });

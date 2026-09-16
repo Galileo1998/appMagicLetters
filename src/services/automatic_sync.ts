@@ -5,7 +5,7 @@ import { syncService } from "./sync_service";
 
 const REQUEST_EVENT = "magicletter:sync-requested";
 const FINISHED_EVENT = "magicletter:sync-finished";
-const RETRY_DELAYS_MS = [5_000, 15_000, 30_000, 60_000, 120_000];
+const RETRY_DELAYS_MS = [5_000, 15_000, 30_000, 60_000, 120_000, 300_000];
 
 let networkUnsubscribe: (() => void) | null = null;
 let appStateSubscription: NativeEventSubscription | null = null;
@@ -52,17 +52,15 @@ async function runPendingSync() {
     const result = await syncService.pushPendingLetters();
     DeviceEventEmitter.emit(FINISHED_EVENT, result);
 
-    if (result.failed > 0 && retryAttempt < RETRY_DELAYS_MS.length) {
-      retryDelay = RETRY_DELAYS_MS[retryAttempt];
-      retryAttempt += 1;
+    if (result.failed > 0) {
+      retryDelay = RETRY_DELAYS_MS[Math.min(retryAttempt, RETRY_DELAYS_MS.length - 1)];
+      retryAttempt = Math.min(retryAttempt + 1, RETRY_DELAYS_MS.length - 1);
     } else {
       retryAttempt = 0;
     }
   } catch {
-    if (retryAttempt < RETRY_DELAYS_MS.length) {
-      retryDelay = RETRY_DELAYS_MS[retryAttempt];
-      retryAttempt += 1;
-    }
+    retryDelay = RETRY_DELAYS_MS[Math.min(retryAttempt, RETRY_DELAYS_MS.length - 1)];
+    retryAttempt = Math.min(retryAttempt + 1, RETRY_DELAYS_MS.length - 1);
   } finally {
     running = false;
     if (retryDelay !== null) {
