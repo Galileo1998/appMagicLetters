@@ -79,6 +79,15 @@ export const syncService = {
         }
       }
     }
+
+    // Solo una respuesta marcada como instantánea completa puede retirar cartas.
+    // Así una respuesta parcial o un servidor antiguo nunca borra trabajo local.
+    if (payload.snapshot_complete === true) {
+      await lettersRepo.removeMissingServerLetters(
+        me.phone,
+        letters.map((item: any) => String(item.id))
+      );
+    }
     return letters.length;
   },
 

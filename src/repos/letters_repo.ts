@@ -1,5 +1,6 @@
 // src/repos/letters_repo.ts
 import { getDb } from "../db";
+import * as FileSystem from "expo-file-system/legacy";
 
 // ---------------------------------------------------------
 // 1. TIPOS Y UTILIDADES (Necesarios para que no de error)
@@ -134,6 +135,60 @@ export async function getLetter(localId: string): Promise<LetterRow | null> {
 export async function clearLocalLetters(userPhone: string) {
   // Se conserva por compatibilidad. La sincronización ahora fusiona y nunca borra borradores.
   void userPhone;
+}
+
+/**
+ * Retira del dispositivo cartas que ya no forman parte de la asignación
+ * autoritativa del técnico. Nunca toca trabajo local pendiente de envío.
+ */
+export async function removeMissingServerLetters(userPhone: string, activeServerIds: string[]) {
+  const db = await getDb();
+  const active = new Set(activeServerIds.map(String));
+  const candidates = await db.getAllAsync<{
+    local_id: string;
+    server_id: string;
+    status: string;
+  }>(
+    `SELECT local_id, server_id, status
+       FROM local_letters
+      WHERE local_user_phone = ?
+        AND server_id IS NOT NULL
+        AND status NOT IN ('DRAFT', 'PENDING_SYNC')`,
+    [userPhone]
+  );
+
+  let removed = 0;
+  for (const letter of candidates) {
+    if (active.has(String(letter.server_id))) continue;
+
+    const photos = await db.getAllAsync<{ file_path: string }>(
+      `SELECT file_path FROM photos WHERE letter_id = ?`,
+      [letter.local_id]
+    );
+    const drawing = await db.getFirstAsync<{ file_path: string }>(
+      `SELECT file_path FROM local_drawings WHERE local_letter_id = ? LIMIT 1`,
+      [letter.local_id]
+    );
+
+    const result = await db.runAsync(
+      `DELETE FROM local_letters
+        WHERE local_id = ? AND status NOT IN ('DRAFT', 'PENDING_SYNC')`,
+      [letter.local_id]
+    );
+    if (result.changes < 1) continue;
+
+    removed++;
+    for (const photo of photos) {
+      if (photo.file_path) {
+        await FileSystem.deleteAsync(photo.file_path, { idempotent: true }).catch(() => undefined);
+      }
+    }
+    if (drawing?.file_path) {
+      await FileSystem.deleteAsync(drawing.file_path, { idempotent: true }).catch(() => undefined);
+    }
+  }
+
+  return removed;
 }
 
 /**
