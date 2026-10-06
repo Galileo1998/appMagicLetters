@@ -6,6 +6,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   PanResponder,
@@ -390,12 +391,41 @@ export default function DrawScreen() {
     try {
       setSaving(true);
       setGuideVisible(false);
-      // La guía es solo visual. Esperamos a que desaparezca antes de capturar.
+
+      // En Android, KeyboardAvoidingView reduce la altura del lienzo mientras el
+      // teclado está abierto. Si capturamos en ese estado, la parte inferior del
+      // dibujo queda fuera del PNG. Cerramos el teclado y esperamos a que termine
+      // la restauración del layout antes de tomar la captura.
+      if (Keyboard.isVisible()) {
+        await new Promise<void>((resolve) => {
+          let settled = false;
+          const finish = () => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timeout);
+            subscription.remove();
+            resolve();
+          };
+          const subscription = Keyboard.addListener('keyboardDidHide', finish);
+          const timeout = setTimeout(finish, 1200);
+          Keyboard.dismiss();
+        });
+      } else {
+        Keyboard.dismiss();
+      }
+
+      // Esperamos varios cuadros para que el lienzo recupere sus dimensiones y
+      // para que la guía visual desaparezca de la imagen final.
       await new Promise<void>((resolve) => {
-        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+        );
       });
-      // @ts-ignore
-      const uri = await viewShotRef.current.capture();
+
+      const viewShot = viewShotRef.current;
+      if (!viewShot?.capture) throw new Error('El lienzo no está listo para capturarse.');
+      const uri = await viewShot.capture();
+      if (!uri) throw new Error('No se pudo capturar el lienzo completo.');
       await saveDrawingPath(letterId, uri, description);
       Alert.alert("Éxito", "Dibujo actualizado");
       router.back();
@@ -599,7 +629,11 @@ export default function DrawScreen() {
       {/* 🎨 CANVAS */}
       <View style={styles.canvasContainer}>
         <ViewShot ref={viewShotRef} options={{ format: "png", quality: 0.8 }} style={{flex:1}}>
-            <View style={styles.canvas} {...panResponder.panHandlers}>
+            <View
+              style={styles.canvas}
+              pointerEvents={saving ? 'none' : 'auto'}
+              {...panResponder.panHandlers}
+            >
                 
                 {/* 1. White background and saved image */}
                 <View style={[StyleSheet.absoluteFill, styles.whiteCanvas]} />
