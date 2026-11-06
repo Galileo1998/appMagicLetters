@@ -4,12 +4,10 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  FlatList,
   Alert,
   Image,
   Keyboard,
   KeyboardAvoidingView,
-  Modal,
   PanResponder,
   Platform,
   ScrollView,
@@ -17,6 +15,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  useWindowDimensions,
   View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -26,7 +25,9 @@ import { getDrawingRecord, saveDrawingPath } from "../../src/repos/drawings_repo
 
 import { getLetter } from '../../src/repos/letters_repo';
 import { canEditLetter, canvasPoint, strokePath, DrawingItem, DrawingState, Point, ShapeType } from '../../src/drawing/model';
-import { DRAWING_TEMPLATES, TEMPLATE_CATEGORIES, templateStroke, GUIDE_PATHS, TemplateCategory } from '../../src/drawing/templates';
+import { DRAWING_TEMPLATES, templateStroke, GUIDE_PATHS, TemplateCategory } from '../../src/drawing/templates';
+import { DrawingTemplatePicker } from '../../src/components/DrawingTemplatePicker';
+
 type TemplateId = string;
 const COLORS = [
   ['Negro','#000000'], ['Blanco','#FFFFFF'], ['Café','#795548'], ['Café oscuro','#4E342E'],
@@ -142,6 +143,9 @@ function renderTemplate(template: TemplateId) {
 export default function DrawScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { height: windowHeight, fontScale } = useWindowDimensions();
+  const compactControls = (windowHeight - insets.top - insets.bottom) / Math.max(1, fontScale) < 550;
+  const [toolsExpanded, setToolsExpanded] = useState(false);
   const { letterId } = useLocalSearchParams<{ letterId: string }>();
   const viewShotRef = useRef<ViewShot>(null);
 
@@ -462,7 +466,7 @@ export default function DrawScreen() {
 
   if (loading) return <ActivityIndicator style={{ flex: 1 }} size="large" />;
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingLeft: insets.left, paddingRight: insets.right }]}>
       <KeyboardAvoidingView
         style={styles.keyboardArea}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -474,7 +478,8 @@ export default function DrawScreen() {
           <Ionicons name="arrow-back" size={24} color="#333" />
         </TouchableOpacity>
 
-        {editable ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.toolsScroll}>
+        {editable ? <ScrollView horizontal showsHorizontalScrollIndicator={false}
+          style={{ flex: 1, height: Math.max(52, 44 * fontScale) }} contentContainerStyle={styles.toolsScroll}>
             {([['marker','Marcador'], ['ellipse','Óvalo'], ['triangle','Triángulo'], ['star','Estrella']] as const).map(([value,label]) => (
               <TouchableOpacity key={value} accessibilityLabel={label} onPress={() => setTool(value)} style={[styles.toolBtn, tool === value && styles.activeTool]}>
                 <Text>{label}</Text>
@@ -538,9 +543,10 @@ export default function DrawScreen() {
       </View>}
 
       {/* 🎨 CANVAS */}
-      <View style={styles.canvasContainer} onLayout={e => setArea(e.nativeEvent.layout)}>
+      <View testID="drawing-workspace" style={styles.canvasContainer} onLayout={e => setArea(e.nativeEvent.layout)}>
         <ViewShot ref={viewShotRef} options={{ format: "png", quality: 0.8 }} style={{ width: canvasWidth, height: canvasHeight }}>
             <View
+              testID="drawing-canvas"
               style={styles.canvas}
               pointerEvents={saving || !editable ? 'none' : 'auto'}
               {...panResponder.panHandlers}
@@ -580,7 +586,7 @@ export default function DrawScreen() {
       </View>
 
       {/* 🎛️ BOTTOM CONTROLS */}
-      <View pointerEvents={saving ? 'none' : 'auto'} style={[
+      <View testID="drawing-controls" pointerEvents={saving ? 'none' : 'auto'} style={[
         styles.bottomBar,
         { paddingBottom: Math.max(insets.bottom + 10, 14) },
       ]}>
@@ -594,115 +600,60 @@ export default function DrawScreen() {
           style={styles.descriptionInput}
         />
 
-        {/* Stroke Size Selector */}
-        {editable && <View style={styles.strokeSelector}>
-          <Text style={{fontSize:10, color:'#888', marginRight:10}}>Grosor:</Text>
-          {STROKES.map(s => (
-            <TouchableOpacity
-              key={s}
-              onPress={() => setStrokeWidth(s)}
-              style={[styles.strokeBtn, strokeWidth === s && styles.activeStroke]}
-            >
-              <View style={{ width: s, height: s, borderRadius: s/2, backgroundColor: 'black' }} />
-            </TouchableOpacity>
-          ))}
-        </View>}
+        {editable && compactControls && <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityState={{ expanded: toolsExpanded }}
+          onPress={() => setToolsExpanded(value => !value)}
+          style={styles.toolsToggle}
+        ><Text style={styles.toolsToggleText}>{toolsExpanded ? 'Ocultar herramientas' : 'Mostrar herramientas'}</Text></TouchableOpacity>}
+        {editable && (!compactControls || toolsExpanded) && <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled"
+          style={{ maxHeight: Math.max(80, windowHeight * 0.27), flexGrow: 0 }}>
+          {/* Stroke Size Selector */}
+          <View style={styles.strokeSelector}>
+            <Text style={{fontSize:10, color:'#888', marginRight:10}}>Grosor:</Text>
+            {STROKES.map(s => (
+              <TouchableOpacity
+                key={s}
+                onPress={() => setStrokeWidth(s)}
+                style={[styles.strokeBtn, strokeWidth === s && styles.activeStroke]}
+              >
+                <View style={{ width: s, height: s, borderRadius: s/2, backgroundColor: 'black' }} />
+              </TouchableOpacity>
+            ))}
+          </View>
 
-        {editable && <><View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
-          <Text>Suavizado:</Text>
-          {[[0, 'Directo'], [0.25, 'Normal'], [0.55, 'Suave']].map(([value,label]) => <TouchableOpacity key={label} onPress={() => setSmoothing(Number(value))} style={{ padding: 10, backgroundColor: smoothing === value ? '#d8eee8' : '#fff' }}><Text>{label}</Text></TouchableOpacity>)}
-        </View>
-        {/* Color Palette */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.palette}>
-          {COLORS.map(([label,c]) => (
-            <TouchableOpacity
-              key={c}
-              accessibilityLabel={label}
-              onPress={() => { setColor(c); if(tool === 'eraser') setTool('pen'); }}
-              style={[
-                styles.colorBtn,
-                { backgroundColor: c },
-                (color === c && tool !== 'eraser') && styles.activeColor
-              ]}
-            />
-          ))}
-        </ScrollView></>}
+          <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
+            <Text>Suavizado:</Text>
+            {[[0, 'Directo'], [0.25, 'Normal'], [0.55, 'Suave']].map(([value,label]) => <TouchableOpacity key={label} onPress={() => setSmoothing(Number(value))} style={{ padding: 10, backgroundColor: smoothing === value ? '#d8eee8' : '#fff' }}><Text>{label}</Text></TouchableOpacity>)}
+          </View>
+          {/* Color Palette */}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.palette} contentContainerStyle={styles.paletteContent}>
+            {COLORS.map(([label,c]) => (
+              <TouchableOpacity
+                key={c}
+                accessibilityLabel={label}
+                onPress={() => { setColor(c); if(tool === 'eraser') setTool('pen'); }}
+                style={[
+                  styles.colorBtn,
+                  { backgroundColor: c },
+                  (color === c && tool !== 'eraser') && styles.activeColor
+                ]}
+              />
+            ))}
+          </ScrollView>
+        </ScrollView>}
       </View>
 
-      {templateModalVisible && <Modal
-        visible={templateModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setTemplateModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.templateModal}>
-            <View style={styles.modalHeader}>
-              <View>
-                <Text style={styles.modalTitle}>{DRAWING_TEMPLATES.length} plantillas para dibujar</Text>
-                <Text style={styles.modalSubtitle}>Contornos definidos, offline; no aparecen en el dibujo guardado</Text>
-              </View>
-              <TouchableOpacity
-                accessibilityLabel="Cerrar plantillas"
-                onPress={() => setTemplateModalVisible(false)}
-                style={styles.modalClose}
-              >
-                <Text style={styles.modalCloseText}>×</Text>
-              </TouchableOpacity>
-            </View>
-
-            <TouchableOpacity onPress={generateRandomTemplate} style={styles.randomTemplateBtn}>
-              <Ionicons name="sparkles" size={20} color="#fff" />
-              <Text style={styles.randomTemplateText}>Generar una guía al azar</Text>
-            </TouchableOpacity>
-
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.categoryList}
-            >
-              {TEMPLATE_CATEGORIES.map((category) => (
-                <TouchableOpacity
-                  key={category}
-                  onPress={() => setTemplateCategory(category)}
-                  style={[
-                    styles.categoryChip,
-                    templateCategory === category && styles.activeCategoryChip,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.categoryChipText,
-                      templateCategory === category && styles.activeCategoryChipText,
-                    ]}
-                  >
-                    {category}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-
-            <FlatList data={visibleTemplates} numColumns={2} keyExtractor={item => item.id}
-              initialNumToRender={8} windowSize={3} columnWrapperStyle={{ justifyContent: 'space-between' }}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  key={item.id}
-                  onPress={() => applyTemplate(item.id)}
-                  style={[styles.templateCard, template === item.id && styles.activeTemplateCard]}
-                >
-                  <View style={styles.templatePreview}>
-                    <Svg width="100%" height="100%" viewBox="0 0 360 520">
-                      {renderTemplate(item.id)}
-                    </Svg>
-                  </View>
-                  <Text style={styles.templateEmoji}>{item.emoji}</Text>
-                  <Text style={styles.templateName}>{item.name}</Text>
-                </TouchableOpacity>
-              )}
-            />
-          </View>
-        </View>
-      </Modal>}
+      {templateModalVisible && <DrawingTemplatePicker
+        category={templateCategory}
+        templates={visibleTemplates}
+        selectedTemplate={template}
+        onClose={() => setTemplateModalVisible(false)}
+        onCategoryChange={setTemplateCategory}
+        onSelect={applyTemplate}
+        onRandom={generateRandomTemplate}
+        renderTemplate={renderTemplate}
+      />}
       </KeyboardAvoidingView>
     </View>
   );
@@ -719,7 +670,7 @@ const styles = StyleSheet.create({
   toolsScroll: { alignItems: 'center', paddingHorizontal: 5 },
   iconBtn: { padding: 8 },
   toolBtn: {
-    minWidth: 44, height: 44, paddingHorizontal: 6, borderRadius: 8, backgroundColor: '#f8f9fa',
+    minWidth: 44, minHeight: 44, paddingHorizontal: 6, borderRadius: 8, backgroundColor: '#f8f9fa',
     justifyContent: 'center', alignItems: 'center', marginHorizontal: 3, borderWidth: 1, borderColor: '#eee'
   },
   activeTool: { backgroundColor: '#007bff', borderColor: '#0056b3' },
@@ -732,54 +683,20 @@ const styles = StyleSheet.create({
   separator: { width: 1, height: 25, backgroundColor: '#ddd', marginHorizontal: 8 },
   saveBtn: { backgroundColor: '#28a745', padding: 8, borderRadius: 20, width: 40, height: 40, justifyContent:'center', alignItems:'center' },
 
-  canvasContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', margin: 10, borderRadius: 12, overflow: 'hidden', elevation: 3, backgroundColor: 'white' },
+  canvasContainer: { flex: 1, minHeight: 0, alignItems: 'center', justifyContent: 'center', margin: 10, borderRadius: 12, overflow: 'hidden', elevation: 3, backgroundColor: 'white' },
   canvas: { flex: 1 },
   whiteCanvas: { backgroundColor: '#fff' },
   svg: { flex: 1 },
 
   bottomBar: { backgroundColor: 'white', padding: 10, borderTopLeftRadius: 15, borderTopRightRadius: 15, elevation: 10 },
   descriptionInput: { minHeight: 40, maxHeight: 110, backgroundColor: '#f2f4f6', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, marginBottom: 8 },
-  strokeSelector: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, justifyContent: 'center' },
+  toolsToggle: { minHeight: 44, padding: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#eef4ff', borderRadius: 8, marginBottom: 4 },
+  toolsToggleText: { color: '#1e62d0', fontWeight: '700', textAlign: 'center' },
+  strokeSelector: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', marginBottom: 12, justifyContent: 'center' },
   strokeBtn: { width: 34, height: 34, justifyContent: 'center', alignItems: 'center', borderRadius: 17, borderWidth: 1, borderColor: '#ddd', marginHorizontal: 5 },
   activeStroke: { borderColor: '#007bff', backgroundColor: '#eef' },
-  palette: { flexDirection: 'row', paddingLeft: 5 },
+  palette: { height: 48, flexGrow: 0, flexShrink: 0 },
+  paletteContent: { alignItems: 'center', paddingHorizontal: 5 },
   colorBtn: { width: 32, height: 32, borderRadius: 16, marginHorizontal: 6, borderWidth: 2, borderColor: 'white', elevation: 2 },
   activeColor: { borderColor: '#333', transform: [{scale: 1.15}] },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(17,24,39,0.48)', justifyContent: 'flex-end' },
-  templateModal: {
-    height: '84%', backgroundColor: '#fffdf7', borderTopLeftRadius: 24,
-    borderTopRightRadius: 24, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 24
-  },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
-  modalTitle: { fontSize: 20, fontWeight: '800', color: '#342b4a' },
-  modalSubtitle: { marginTop: 3, fontSize: 12, color: '#667085' },
-  modalClose: {
-    width: 36, height: 36, borderRadius: 18, backgroundColor: '#f2f4f7',
-    alignItems: 'center', justifyContent: 'center'
-  },
-  modalCloseText: { fontSize: 28, lineHeight: 30, color: '#475467' },
-  randomTemplateBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    backgroundColor: '#7c3aed', borderRadius: 12, paddingVertical: 12, marginBottom: 14
-  },
-  randomTemplateText: { color: '#fff', fontWeight: '800', fontSize: 14 },
-  categoryList: { paddingBottom: 12, gap: 8 },
-  categoryChip: {
-    paddingHorizontal: 13, paddingVertical: 8, borderRadius: 18,
-    backgroundColor: '#f2f4f7', borderWidth: 1, borderColor: '#e4e7ec'
-  },
-  activeCategoryChip: { backgroundColor: '#ede9fe', borderColor: '#8b5cf6' },
-  categoryChipText: { fontSize: 12, fontWeight: '700', color: '#475467' },
-  activeCategoryChipText: { color: '#6d28d9' },
-  templateGrid: {
-    flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', paddingBottom: 12
-  },
-  templateCard: {
-    width: '48%', height: 180, marginBottom: 12, borderRadius: 14, backgroundColor: '#fff',
-    borderWidth: 2, borderColor: '#e4e7ec', overflow: 'hidden', alignItems: 'center', paddingBottom: 8
-  },
-  activeTemplateCard: { borderColor: '#7c3aed', backgroundColor: '#faf5ff' },
-  templatePreview: { width: '100%', height: 125, padding: 8 },
-  templateEmoji: { position: 'absolute', right: 8, top: 7, fontSize: 20 },
-  templateName: { fontSize: 13, fontWeight: '700', color: '#344054' }
 });
