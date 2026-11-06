@@ -33,7 +33,7 @@ Usar un teléfono y una tablet Android, con copias de cartas de prueba:
 
 Para generar el APK instalable se requiere la cuenta Expo/EAS autorizada del proyecto: `npm run build:apk`. La exportación de Metro comprueba el bundle Android; no reemplaza estas pruebas de pantalla táctil ni genera un APK.
 
-## Compilar la versión correcta (1.2.3 · KidiConnect)
+## Compilar la versión correcta (1.2.4 · KidiConnect)
 
 Los cambios del editor y del flujo de preguntas deben estar integrados en `main`. En una copia git limpia del repositorio `Galileo1998/appMagicLetters`:
 
@@ -45,8 +45,8 @@ npm ci
 npm run build:apk -- --clear-cache
 ```
 
-La versión debe imprimir `1.2.3`. Si se compila desde Expo conectado a GitHub, seleccionar `main` con los cambios de KidiConnect y el perfil `apk`. No reutilizar una carpeta ZIP ni un build anterior. El perfil APK incrementa automáticamente el código Android con la fuente remota existente, conservando el proyecto EAS y la identificación del paquete. Las mismas credenciales de firma de EAS permiten actualizar la app instalada conservando sus datos. No desinstalar una app con borradores sin enviar.
+La versión debe imprimir `1.2.4`. Si se compila desde Expo conectado a GitHub, seleccionar `main` con los cambios de KidiConnect y el perfil `apk`. No reutilizar una carpeta ZIP ni un build anterior. El perfil APK incrementa automáticamente el código Android con la fuente remota existente, conservando el proyecto EAS y la identificación del paquete. Las mismas credenciales de firma de EAS permiten actualizar la app instalada conservando sus datos. No desinstalar una app con borradores sin enviar.
 
-Confirmar en el detalle del nuevo build el commit fuente y versión 1.2.3. El lanzador debe mostrar el nombre KidiConnect y la imagen enviada como icono, sin recortar el nombre al usar un icono circular. La pantalla de inicio de sesión conserva el logo de Acción Honduras. Al abrirlo deben verse las 200 plantillas y Preguntas y mensaje como una única tarea.
+Confirmar en el detalle del nuevo build el commit fuente y versión 1.2.4. El lanzador debe mostrar el nombre KidiConnect y la imagen enviada como icono, sin recortar el nombre al usar un icono circular. El logo de Acción Honduras debe verse en el inicio de sesión y como marca de agua tenue detrás de las tarjetas de cartas. La marca de agua debe permanecer centrada al desplazar la lista, adaptarse al tamaño de pantalla y no interceptar los toques ni ocupar espacio en el encabezado. Al abrirlo deben verse las 200 plantillas y Preguntas y mensaje como una única tarea.
 
 La versión 1.2.1 agrega `letter_answers.answer_in_message` con valor inicial 0, sin modificar respuestas previas. Al guardar una carta editable se conserva exactamente una pregunta seleccionada y la respuesta íntegra en `message_content`. El indicador viaja en `answers`; el servidor requiere el ajuste de recepción que acepta una respuesta separada vacía únicamente con esa marca y presentación V2. No duplicar el mensaje dentro de `answer_text`.
