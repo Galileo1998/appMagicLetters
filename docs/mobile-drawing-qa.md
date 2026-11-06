@@ -35,6 +35,8 @@ Para generar el APK instalable se requiere la cuenta Expo/EAS autorizada del pro
 
 ## Compilar la versión correcta (1.2.4 · KidiConnect)
 
+Proyecto Expo: [@galileo1998/kidi-connect](https://expo.dev/accounts/galileo1998/projects/kidi-connect), ID `370e9f38-d7a9-4537-9560-a24d15f93b79`. El nombre visible sigue siendo KidiConnect y el paquete Android es `org.accionhonduras.magicletter`.
+
 Los cambios del editor y del flujo de preguntas deben estar integrados en `main`. En una copia git limpia del repositorio `Galileo1998/appMagicLetters`:
 
 ```sh
@@ -42,10 +44,13 @@ git switch main
 git pull --ff-only origin main
 node -p "require('./app.json').expo.version"
 npm ci
+npx eas-cli@latest project:info
 npm run build:apk -- --clear-cache
 ```
 
-La versión debe imprimir `1.2.4`. Si se compila desde Expo conectado a GitHub, seleccionar `main` con los cambios de KidiConnect y el perfil `apk`. No reutilizar una carpeta ZIP ni un build anterior. El perfil APK incrementa automáticamente el código Android con la fuente remota existente, conservando el proyecto EAS y la identificación del paquete. Las mismas credenciales de firma de EAS permiten actualizar la app instalada conservando sus datos. No desinstalar una app con borradores sin enviar.
+La versión debe imprimir `1.2.4` y `project:info` debe indicar `@galileo1998/kidi-connect` con el ID anterior. Si se compila desde Expo conectado a GitHub, seleccionar `main` con los cambios de KidiConnect y el perfil `apk`. No reutilizar una carpeta ZIP ni un build anterior. El perfil APK incrementa automáticamente el código Android en el nuevo proyecto EAS.
+
+Para actualizar una instalación existente desde este nuevo proyecto, reutilizar su keystore Android y configurar en EAS un código de versión superior al del APK instalado antes de la primera compilación (`eas credentials --platform android` y `eas build:version:set --platform android --profile apk`). El cambio de proyecto no copia automáticamente la firma ni el contador anterior. No desinstalar una app con borradores sin enviar.
 
 Confirmar en el detalle del nuevo build el commit fuente y versión 1.2.4. El lanzador debe mostrar el nombre KidiConnect y la imagen enviada como icono, sin recortar el nombre al usar un icono circular. El logo de Acción Honduras debe verse en el inicio de sesión y como marca de agua tenue detrás de las tarjetas de cartas. La marca de agua debe permanecer centrada al desplazar la lista, adaptarse al tamaño de pantalla y no interceptar los toques ni ocupar espacio en el encabezado. Al abrirlo deben verse las 200 plantillas y Preguntas y mensaje como una única tarea.
 

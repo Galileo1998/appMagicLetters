@@ -1,7 +1,8 @@
 {
   "expo": {
     "name": "KidiConnect",
-    "slug": "magic-letter",
+    "slug": "kidi-connect",
+    "owner": "galileo1998",
     "version": "1.2.4",
     "orientation": "portrait",
     "icon": "./assets/kidiconnect-icon.png",
@@ -30,7 +31,7 @@
     },
     "extra": {
       "eas": {
-        "projectId": "9da146e3-5c23-418b-98f2-4f062dc33273"
+        "projectId": "370e9f38-d7a9-4537-9560-a24d15f93b79"
       }
     },
     "plugins": [
