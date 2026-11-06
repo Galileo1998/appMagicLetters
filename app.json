@@ -1,13 +1,13 @@
 {
   "expo": {
-    "name": "Magic Letter",
+    "name": "KidiConnect",
     "slug": "magic-letter",
-    "version": "1.2.1",
+    "version": "1.2.2",
     "orientation": "portrait",
-    "icon": "./assets/app-icon-square.png",
+    "icon": "./assets/kidiconnect-icon.png",
     "userInterfaceStyle": "light",
     "splash": {
-      "image": "./assets/logo.png",
+      "image": "./assets/kidiconnect-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -19,14 +19,14 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/app-icon-square.png",
-        "backgroundColor": "#ffffff"
+        "foregroundImage": "./assets/kidiconnect-adaptive.png",
+        "backgroundColor": "#fff8ee"
       },
       "softwareKeyboardLayoutMode": "resize",
       "package": "org.accionhonduras.magicletter"
     },
     "web": {
-      "favicon": "./assets/logo.png"
+      "favicon": "./assets/kidiconnect-icon.png"
     },
     "extra": {
       "eas": {
@@ -39,7 +39,7 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Permite a Magic Letter seleccionar fotografías para la carta.",
+          "photosPermission": "Permite a KidiConnect seleccionar fotografías para la carta.",
           "microphonePermission": false
         }
       ],
