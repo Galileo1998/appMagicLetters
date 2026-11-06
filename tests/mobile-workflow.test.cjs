@@ -72,7 +72,7 @@ test('answers and message save together and reject queued letters or missing req
   await repo.saveMessageAndAnswers('L1','Mensaje completo',qs,{1:'Dibujar'});
   assert.equal(writes.length,2);
   assert.match(writes[0][0], /INSERT INTO letter_answers/);
-  assert.match(writes[1][0], /UPDATE local_letters SET message_content/);
+  assert.match(writes[1][0], /UPDATE local_letters SET message_content=\?, content_version=2/);
   status='PENDING_SYNC';
   await assert.rejects(repo.saveMessageAndAnswers('L1','Mensaje cambiado',qs,{1:'Jugar'}), /preparada/);
   assert.equal(writes.length,2);

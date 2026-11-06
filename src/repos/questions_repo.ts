@@ -84,6 +84,6 @@ export async function saveMessageAndAnswers(letterId: string, message: string, q
          question_text=excluded.question_text, answer_text=excluded.answer_text, updated_at=datetime('now')`,
         [letterId, q.id, q.question_text, (answers[q.id] ?? '').trim()]);
     }
-    await tx.runAsync("UPDATE local_letters SET message_content=?, updated_at=datetime('now') WHERE local_id=?", [message.trim(), letterId]);
+    await tx.runAsync("UPDATE local_letters SET message_content=?, content_version=2, updated_at=datetime('now') WHERE local_id=?", [message.trim(), letterId]);
   });
 }
