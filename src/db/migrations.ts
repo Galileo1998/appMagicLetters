@@ -19,6 +19,7 @@ export async function migrate(db: SQLite.SQLiteDatabase) {
   await addColumn("photos", "description", "TEXT NOT NULL DEFAULT ''");
   await addColumn("photos", "updated_at", "TEXT NULL");
   await addColumn("local_drawings", "description", "TEXT NOT NULL DEFAULT ''");
+  await addColumn("local_drawings", "editor_state", "TEXT NULL");
 
   await db.execAsync(`
     CREATE UNIQUE INDEX IF NOT EXISTS uq_photos_letter_slot ON photos(letter_id, slot);

@@ -61,6 +61,8 @@ export default function LetterMenuScreen() {
 
   const canEdit = ["DRAFT", "ASSIGNED", "RETURNED"].includes(letter.status);
 
+  const messageComplete = !!letter.has_message && (letter.answered_questions_count || 0) > 0 &&
+    letter.answered_required_count === letter.required_questions_count;
   return (
     <View style={styles.container}>
       <ChildBackground />
@@ -172,13 +174,13 @@ export default function LetterMenuScreen() {
           style={styles.actionButton} 
           onPress={() => router.push(`/letter/${letterId}/message`)}
         >
-          <View style={[styles.iconCircle, letter.has_message ? styles.completedCircle : styles.pendingCircle]}>
-            <Ionicons name={letter.has_message ? "checkmark" : "document-text"} size={24} color={letter.has_message ? "#fff" : "#555"} />
+          <View style={[styles.iconCircle, messageComplete ? styles.completedCircle : styles.pendingCircle]}>
+            <Ionicons name={messageComplete ? "checkmark" : "document-text"} size={24} color={messageComplete ? "#fff" : "#555"} />
           </View>
           <View style={styles.actionTextContainer}>
-            <Text style={styles.actionTitle}>Escribir Mensaje</Text>
+            <Text style={styles.actionTitle}>Preguntas y mensaje</Text>
             <Text style={styles.actionSubtitle} numberOfLines={1}>
-              {letter.has_message ? "✅ Completado" : "Traducción / Texto"}
+              {messageComplete ? "✅ Preguntas y mensaje completos" : "Primero consulta; luego redacta la carta"}
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={20} color="#ccc" />
@@ -218,40 +220,8 @@ export default function LetterMenuScreen() {
           <Ionicons name="chevron-forward" size={20} color="#ccc" />
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.actionButton}
-          onPress={() => router.push(`/letter/${letterId}/questions`)}
-        >
-          <View style={[styles.iconCircle,
-            (letter.answered_required_count || 0) === (letter.required_questions_count || 0) &&
-            (letter.total_questions_count || 0) > 0 &&
-            (letter.answered_questions_count || 0) > 0
-              ? styles.completedCircle : styles.pendingCircle]}>
-            <Ionicons
-              name="help-circle"
-              size={24}
-              color={
-                (letter.answered_required_count || 0) === (letter.required_questions_count || 0) &&
-                (letter.total_questions_count || 0) > 0 &&
-                (letter.answered_questions_count || 0) > 0
-                  ? "#fff"
-                  : "#555"
-              }
-            />
-          </View>
-          <View style={styles.actionTextContainer}>
-            <Text style={styles.actionTitle}>Preguntas al niño · Obligatorio</Text>
-            <Text style={styles.actionSubtitle}>
-              {(letter.total_questions_count || 0) === 0
-                ? "Sin preguntas descargadas: sincroniza cuando tengas señal"
-                : `${letter.answered_questions_count || 0} de ${letter.total_questions_count || 0} respondidas`}
-            </Text>
-          </View>
-          <Ionicons name="chevron-forward" size={20} color="#ccc" />
-        </TouchableOpacity>
-
         {/* --- BOTÓN DE ENVIAR (CONDICIONAL) --- */}
-        {isReadyToSend ? (
+        {isReadyToSend && canEdit ? (
           <TouchableOpacity style={styles.sendButton} onPress={handleSend}>
             <Ionicons name="paper-plane" size={24} color="white" style={{marginRight: 10}} />
             <Text style={styles.sendButtonText}>ENVIAR CARTA</Text>
@@ -259,7 +229,7 @@ export default function LetterMenuScreen() {
         ) : (
           <View style={styles.lockedButton}>
             <Ionicons name="lock-closed-outline" size={20} color="#888" style={{marginRight: 8}} />
-            <Text style={styles.lockedText}>Completa tareas, preguntas y descripciones</Text>
+            <Text style={styles.lockedText}>{canEdit ? 'Completa tareas, preguntas y descripciones' : 'Carta preparada para envío · Solo consulta'}</Text>
           </View>
         )}
 
