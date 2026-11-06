@@ -102,8 +102,9 @@ export const syncService = {
       submission_id: string | null;
       message_content: string | null;
       photo_required: number;
+      content_version: number;
     }>(
-      `SELECT local_id, server_id, submission_id, message_content, photo_required
+      `SELECT local_id, server_id, submission_id, message_content, photo_required, content_version
        FROM local_letters WHERE status='PENDING_SYNC' ORDER BY updated_at`
     );
 
@@ -120,6 +121,7 @@ export const syncService = {
         form.append("server_id", letter.server_id);
         form.append("submission_id", submissionId);
         form.append("message", letter.message_content ?? "");
+        form.append("content_version", letter.content_version === 2 ? "2" : "1");
         form.append("photo_required", letter.photo_required === 0 ? "0" : "1");
 
         const drawing = await getDrawingRecord(letter.local_id);

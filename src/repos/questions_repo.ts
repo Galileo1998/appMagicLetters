@@ -1,3 +1,4 @@
+import { canEditLetter } from "../drawing/model";
 import { getDb } from "../db";
 
 export type QuestionRow = {
@@ -64,4 +65,25 @@ export async function listAnswers(letterId: string) {
     `SELECT question_id, question_text, answer_text FROM letter_answers WHERE letter_id=?`,
     [letterId]
   );
+}
+
+/** Keep answers and message together without changing the upload payload format. */
+export async function saveMessageAndAnswers(letterId: string, message: string, questions: QuestionRow[], answers: Record<number, string>) {
+  if (!questions.length || !questions.some(q => (answers[q.id] ?? '').trim()) ||
+      questions.some(q => q.is_required === 1 && !(answers[q.id] ?? '').trim()) || message.trim().length <= 5) {
+    throw new Error('Completa las preguntas y el mensaje.');
+  }
+  const db = await getDb();
+  await db.withExclusiveTransactionAsync(async tx => {
+    const letter = await tx.getFirstAsync<{ status: string }>('SELECT status FROM local_letters WHERE local_id=?', [letterId]);
+    if (!canEditLetter(letter?.status)) throw new Error('La carta ya está preparada para envío.');
+    for (const q of questions) {
+      await tx.runAsync(
+        `INSERT INTO letter_answers (letter_id, question_id, question_text, answer_text, updated_at)
+         VALUES (?, ?, ?, ?, datetime('now')) ON CONFLICT(letter_id, question_id) DO UPDATE SET
+         question_text=excluded.question_text, answer_text=excluded.answer_text, updated_at=datetime('now')`,
+        [letterId, q.id, q.question_text, (answers[q.id] ?? '').trim()]);
+    }
+    await tx.runAsync("UPDATE local_letters SET message_content=?, content_version=2, updated_at=datetime('now') WHERE local_id=?", [message.trim(), letterId]);
+  });
 }

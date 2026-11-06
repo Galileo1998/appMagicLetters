@@ -14,11 +14,13 @@ export async function migrate(db: SQLite.SQLiteDatabase) {
   await addColumn("local_letters", "submission_id", "TEXT NULL");
   await addColumn("local_letters", "sync_error", "TEXT NULL");
   await addColumn("local_letters", "photo_required", "INTEGER NOT NULL DEFAULT 1");
+  await addColumn("local_letters", "content_version", "INTEGER NOT NULL DEFAULT 1");
   await addColumn("photos", "slot", "INTEGER NULL");
   await addColumn("photos", "file_path", "TEXT NULL");
   await addColumn("photos", "description", "TEXT NOT NULL DEFAULT ''");
   await addColumn("photos", "updated_at", "TEXT NULL");
   await addColumn("local_drawings", "description", "TEXT NOT NULL DEFAULT ''");
+  await addColumn("local_drawings", "editor_state", "TEXT NULL");
 
   await db.execAsync(`
     CREATE UNIQUE INDEX IF NOT EXISTS uq_photos_letter_slot ON photos(letter_id, slot);
