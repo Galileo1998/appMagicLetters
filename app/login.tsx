@@ -1,6 +1,5 @@
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
-// 1. IMPORTAR IMAGE
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { initDb } from "../src/db";
 import { saveAuthenticatedUser } from "../src/repos/auth_repo";
@@ -37,14 +36,13 @@ export default function Login() {
     <View style={styles.container}>
       <ChildBackground />
       
-      {/* 2. AQUÍ VA EL LOGO */}
-      {/* Asegúrate que la ruta sea correcta, normalmente subiendo un nivel con ../ */}
       <Image 
         source={require('../assets/logo.png')} 
         style={styles.logo}
       />
 
-      <Text style={styles.title}>Iniciar sesión</Text>
+      <Text style={styles.title}>KidiConnect</Text>
+      <Text style={styles.subtitle}>Iniciar sesión</Text>
 
       <Text style={styles.label}>Teléfono</Text>
       <TextInput
@@ -88,7 +86,8 @@ const styles = StyleSheet.create({
     resizeMode: 'contain' // Mantiene la proporción de la imagen
   },
 
-  title: { fontSize: 24, fontWeight: "900", marginBottom: 20, textAlign: 'center' },
+  title: { fontSize: 24, fontWeight: "900", marginBottom: 6, textAlign: 'center' },
+  subtitle: { fontSize: 18, fontWeight: "700", marginBottom: 14, textAlign: 'center', color: '#444' },
   label: { marginTop: 10, fontWeight: "800", color: '#444' },
   input: { backgroundColor: "#f2f2f2", padding: 15, borderRadius: 12, marginTop: 6, fontSize: 16 },
   btn: { backgroundColor: "#2b7", padding: 16, borderRadius: 14, marginTop: 24, alignItems: "center" },
