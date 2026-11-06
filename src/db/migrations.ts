@@ -15,6 +15,7 @@ export async function migrate(db: SQLite.SQLiteDatabase) {
   await addColumn("local_letters", "sync_error", "TEXT NULL");
   await addColumn("local_letters", "photo_required", "INTEGER NOT NULL DEFAULT 1");
   await addColumn("local_letters", "content_version", "INTEGER NOT NULL DEFAULT 1");
+  await addColumn("letter_answers", "answer_in_message", "INTEGER NOT NULL DEFAULT 0");
   await addColumn("photos", "slot", "INTEGER NULL");
   await addColumn("photos", "file_path", "TEXT NULL");
   await addColumn("photos", "description", "TEXT NOT NULL DEFAULT ''");

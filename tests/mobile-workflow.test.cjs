@@ -62,18 +62,37 @@ test('saving preserves vector layers and a legacy base image for explicit re-edi
   assert.equal(insert[1][5], JSON.stringify(state));
   assert.equal(calls.filter(c => c[0] === 'delete-file').length, 0);
 });
-test('answers and message save together and reject queued letters or missing required answers', async () => {
+test('one selected question saves with the complete message and no separate answer', async () => {
   let status = 'DRAFT'; const writes = [];
   const tx = { getFirstAsync: async()=>({status}), runAsync: async(...args)=>writes.push(args) };
   const repo = load('src/repos/questions_repo.ts', { '../db':{getDb:async()=>({withExclusiveTransactionAsync:async fn=>fn(tx)})}, '../drawing/model':model });
-  const qs = [{id:1,question_text:'¿Qué te gusta?',is_required:1}];
-  await assert.rejects(repo.saveMessageAndAnswers('L1','Mensaje completo',qs,{}), /Completa/);
+  const q = {id:2,question_text:'¿Qué te gusta?',is_required:1};
+  await assert.rejects(repo.saveQuestionAndMessage('L1','Mensaje completo',null), /Selecciona/);
+  await assert.rejects(repo.saveQuestionAndMessage('L1','Corto',q), /redacta/);
   assert.equal(writes.length,0);
-  await repo.saveMessageAndAnswers('L1','Mensaje completo',qs,{1:'Dibujar'});
-  assert.equal(writes.length,2);
-  assert.match(writes[0][0], /INSERT INTO letter_answers/);
-  assert.match(writes[1][0], /UPDATE local_letters SET message_content=\?, content_version=2/);
+  await repo.saveQuestionAndMessage('L1','  Mensaje completo  ',q);
+  assert.equal(writes.length,3);
+  assert.match(writes[0][0], /DELETE FROM letter_answers/);
+  assert.match(writes[1][0], /answer_in_message/);
+  assert.match(writes[1][0], /'', 1/);
+  assert.deepEqual(Array.from(writes[1][1]), ['L1',2,'¿Qué te gusta?']);
+  assert.equal(writes[2][1][0], 'Mensaje completo');
+  assert.match(writes[2][0], /content_version=2/);
   status='PENDING_SYNC';
-  await assert.rejects(repo.saveMessageAndAnswers('L1','Mensaje cambiado',qs,{1:'Jugar'}), /preparada/);
-  assert.equal(writes.length,2);
+  await assert.rejects(repo.saveQuestionAndMessage('L1','Mensaje cambiado',q), /preparada/);
+  assert.equal(writes.length,3);
+});
+test('selection and full message complete the task without answering all required catalog questions', () => {
+  assert.equal(model.isMessageComplete({has_message:1,selected_questions_count:1,required_questions_count:40,answered_required_count:0}),true);
+  assert.equal(model.isMessageComplete({has_message:0,selected_questions_count:1}),false);
+  assert.equal(model.isMessageComplete({has_message:1,selected_questions_count:0,answered_questions_count:0}),false);
+  assert.equal(model.isMessageComplete({has_message:1,answered_questions_count:2,answered_required_count:2,required_questions_count:2}),true);
+  assert.equal(model.isMessageComplete({has_message:1,answered_questions_count:1,answered_required_count:1,required_questions_count:2}),false);
+});
+test('sync keeps selected prompt marker even with an empty separate answer', async () => {
+  const row = {question_id:2,question_text:'¿Qué te gusta?',answer_text:'',answer_in_message:1};
+  const repo=load('src/repos/questions_repo.ts',{'../db':{getDb:async()=>({getAllAsync:async sql=>{
+    assert.match(sql,/answer_in_message/);return [row];
+  }})},'../drawing/model':model});
+  assert.equal(JSON.stringify(await repo.listAnswers('L1')),JSON.stringify([row]));
 });

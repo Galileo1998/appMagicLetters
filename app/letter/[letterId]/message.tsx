@@ -13,7 +13,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { listQuestionsForLetter, QuestionRow, saveMessageAndAnswers } from "../../../src/repos/questions_repo";
+import { listQuestionsForLetter, QuestionRow, saveQuestionAndMessage } from "../../../src/repos/questions_repo";
 
 import { getLetter } from '../../../src/repos/letters_repo';
 import { canEditLetter } from '../../../src/drawing/model';
@@ -22,7 +22,6 @@ export default function MessageScreen() {
   const { letterId } = useLocalSearchParams<{ letterId: string }>();
   const router = useRouter();
   const [questions, setQuestions] = useState<QuestionRow[]>([]);
-  const [answers, setAnswers] = useState<Record<number, string>>({});
   const [message, setMessage] = useState('');
   const [sponsor, setSponsor] = useState('');
   const [editable, setEditable] = useState(false);
@@ -32,12 +31,6 @@ export default function MessageScreen() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const scrollRef = useRef<ScrollView>(null);
 
-  const revealAnswer = useCallback(() => {
-    setTimeout(() => {
-      scrollRef.current?.scrollToEnd({ animated: true });
-    }, 250);
-  }, []);
-
   const load = useCallback(async () => {
     if (!letterId) return;
     setLoading(true);
@@ -46,46 +39,23 @@ export default function MessageScreen() {
     setMessage(letter?.message_content ?? '');
     setSponsor(letter?.contact_name ?? '');
     setEditable(canEditLetter(letter?.status));
-    const initial = Object.fromEntries(rows.map((q) => [q.id, q.answer_text ?? ""]));
     setQuestions(rows);
-    setAnswers(initial);
-    const answered = rows.find((q) => (q.answer_text ?? "").trim() !== "");
-    setSelectedId(answered?.id ?? rows[0]?.id ?? null);
+    const chosen = rows.find(q => q.answer_in_message === 1) ?? rows.find(q => (q.answer_text ?? '').trim());
+    setSelectedId(chosen?.id ?? null);
+    setStage(chosen ? 'message' : 'questions');
     } catch { Alert.alert('Error', 'No se pudo cargar el mensaje.'); }
     finally { setLoading(false); }
   }, [letterId]);
 
   useFocusEffect(useCallback(() => { void load(); }, [load]));
 
-  async function saveAndContinue() {
-    if (!letterId) return;
-    if (!editable) { setStage('message'); return; }
-    const answered = questions.filter((question) => (answers[question.id] ?? "").trim() !== "");
-    const missingRequired = questions.some(
-      (question) => question.is_required === 1 && !(answers[question.id] ?? "").trim()
-    );
-    if (missingRequired) {
-      Alert.alert("Faltan respuestas", "Completa las preguntas marcadas como obligatorias.");
-      return;
-    }
-    if (questions.length > 0 && answered.length === 0) {
-      Alert.alert("Selecciona una pregunta", "Responde al menos una pregunta para continuar.");
-      return;
-    }
-    if (!questions.length) {
-      Alert.alert('Sin preguntas', 'Sincroniza las preguntas antes de redactar.'); return;
-    }
-    setStage('message');
-    scrollRef.current?.scrollTo({ y: 0, animated: true });
-  }
-
   async function saveContent() {
     if (!letterId || saving || !editable) return;
     if (message.trim().length <= 5) { Alert.alert('Mensaje incompleto', 'Redacta el contenido de la carta antes de guardar.'); return; }
     setSaving(true);
     try {
-      await saveMessageAndAnswers(letterId, message, questions, answers);
-      Alert.alert('Guardado', 'Preguntas y mensaje registrados correctamente.');
+      await saveQuestionAndMessage(letterId, message, selected);
+      Alert.alert('Guardado', 'Pregunta seleccionada y mensaje guardados correctamente.');
       router.back();
     } catch { Alert.alert('No se pudo guardar', 'Comprueba que la carta aún permite cambios e intenta nuevamente.'); }
     finally { setSaving(false); }
@@ -98,7 +68,7 @@ export default function MessageScreen() {
       <ChildBackground />
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()}><Ionicons name="arrow-back" size={25} /></TouchableOpacity>
-        <Text style={styles.title}>{stage === 'questions' ? '1. Consultar preguntas' : '2. Redactar mensaje'}</Text>
+        <Text style={styles.title}>{stage === 'questions' ? '1. Seleccionar pregunta' : '2. Redactar mensaje'}</Text>
         <View style={{ width: 25 }} />
       </View>
       <KeyboardAvoidingView
@@ -116,22 +86,23 @@ export default function MessageScreen() {
         {!editable && <Text style={styles.help}>Carta preparada para envío. Solo consulta.</Text>}
         {stage === 'questions' ? <>
         <Text style={styles.intro}>
-          Selecciona una pregunta, conversa con el niño o cuidador y escribe la respuesta. Puedes responder más de una.
+          Selecciona una pregunta para guiar la carta. Responde al redactar el mensaje completo.
         </Text>
 
         {questions.length === 0 ? (
           <Text style={styles.empty}>No hay preguntas descargadas. Sincroniza cuando tengas señal.</Text>
         ) : questions.map((question) => {
           const selectedQuestion = selectedId === question.id;
-          const hasAnswer = (answers[question.id] ?? "").trim() !== "";
           return (
             <TouchableOpacity
               key={question.id}
               style={[styles.questionRow, selectedQuestion && styles.questionSelected]}
               onPress={() => {
                 setSelectedId(question.id);
-                revealAnswer();
+                setStage('message');
+                scrollRef.current?.scrollTo({ y: 0, animated: true });
               }}
+              disabled={!editable || saving}
               activeOpacity={0.8}
             >
               <View style={[styles.radio, selectedQuestion && styles.radioSelected]}>
@@ -139,44 +110,24 @@ export default function MessageScreen() {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.question}>
-                  {question.question_text}{question.is_required ? " *" : ""}
+                  {question.question_text}
                 </Text>
-                {hasAnswer ? <Text style={styles.answered}>Con respuesta</Text> : null}
               </View>
             </TouchableOpacity>
           );
         })}
 
-        {selected ? (
-          <View style={styles.answerCard}>
-            <Text style={styles.answerLabel}>Respuesta</Text>
-            {selected.help_text ? <Text style={styles.help}>{selected.help_text}</Text> : null}
-            <TextInput
-              editable={editable && !saving}
-              style={styles.input}
-              multiline
-              value={answers[selected.id] ?? ""}
-              onChangeText={(text) => setAnswers((current) => ({ ...current, [selected.id]: text }))}
-              placeholder="Escribe lo que respondió..."
-              textAlignVertical="top"
-              onFocus={revealAnswer}
-            />
-          </View>
-        ) : null}
-
-        <TouchableOpacity style={styles.continueButton} onPress={saveAndContinue}>
-          <Text style={styles.continueText}>CONTINUAR AL MENSAJE</Text>
-          <Ionicons name="arrow-forward" size={20} color="white" />
-        </TouchableOpacity>
         </> : <>
           <Text style={styles.intro}>Escribe a tu patrocinador: {sponsor || 'Sin nombre registrado'}</Text>
-          {questions.filter(q => (answers[q.id] ?? '').trim()).map(q => <View key={q.id} style={styles.answerCard}>
-            <Text style={styles.question}>{q.question_text}</Text><Text style={styles.help}>{answers[q.id]}</Text>
-          </View>)}
+          {selected && <View style={styles.answerCard}>
+            <Text style={styles.answerLabel}>Pregunta seleccionada</Text>
+            <Text style={styles.question}>{selected.question_text}</Text>
+            {selected.help_text ? <Text style={styles.help}>{selected.help_text}</Text> : null}
+          </View>}
           <Text style={[styles.answerLabel, { marginTop: 20 }]}>Redacta el contenido de la carta</Text>
           <TextInput editable={editable && !saving} multiline style={[styles.input, { minHeight: 240 }]} value={message} onChangeText={setMessage} placeholder="Escribe el mensaje completo..." textAlignVertical="top" />
-          <TouchableOpacity disabled={saving} style={styles.answerCard} onPress={() => setStage('questions')}><Text>Volver a consultar las preguntas</Text></TouchableOpacity>
-          {editable && <TouchableOpacity disabled={saving} style={styles.continueButton} onPress={saveContent}><Text style={styles.continueText}>{saving ? 'GUARDANDO...' : 'GUARDAR PREGUNTAS Y MENSAJE'}</Text></TouchableOpacity>}
+          {editable && <TouchableOpacity disabled={saving} style={styles.answerCard} onPress={() => setStage('questions')}><Text>Cambiar pregunta</Text></TouchableOpacity>}
+          {editable && <TouchableOpacity disabled={saving} style={styles.continueButton} onPress={saveContent}><Text style={styles.continueText}>{saving ? 'GUARDANDO...' : 'GUARDAR MENSAJE'}</Text></TouchableOpacity>}
         </>}
         </>}
       </ScrollView>

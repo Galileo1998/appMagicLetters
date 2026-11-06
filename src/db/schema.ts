@@ -85,6 +85,7 @@ CREATE TABLE IF NOT EXISTS letter_answers (
   question_id INTEGER NOT NULL,
   question_text TEXT NOT NULL,
   answer_text TEXT NOT NULL DEFAULT '',
+  answer_in_message INTEGER NOT NULL DEFAULT 0,
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),
   PRIMARY KEY (letter_id, question_id),
   FOREIGN KEY (letter_id) REFERENCES local_letters(local_id) ON DELETE CASCADE

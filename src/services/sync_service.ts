@@ -70,11 +70,12 @@ export const syncService = {
       if (Array.isArray(returned.answers)) {
         for (const answer of returned.answers) {
           await db.runAsync(
-            `INSERT INTO letter_answers (letter_id, question_id, question_text, answer_text, updated_at)
-             VALUES (?, ?, ?, ?, datetime('now'))
+            `INSERT INTO letter_answers (letter_id, question_id, question_text, answer_text, answer_in_message, updated_at)
+             VALUES (?, ?, ?, ?, ?, datetime('now'))
              ON CONFLICT(letter_id, question_id) DO UPDATE SET answer_text=excluded.answer_text,
-               question_text=excluded.question_text, updated_at=datetime('now')`,
-            [localId, Number(answer.question_id), answer.question_text, answer.answer_text]
+               question_text=excluded.question_text, answer_in_message=excluded.answer_in_message, updated_at=datetime('now')`,
+            [localId, Number(answer.question_id), answer.question_text, answer.answer_text ?? '',
+              String(answer.answer_text ?? '').trim() === '' && String(answer.question_text ?? '').trim() !== '' ? 1 : 0]
           );
         }
       }

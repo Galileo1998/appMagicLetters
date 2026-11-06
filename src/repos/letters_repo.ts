@@ -34,6 +34,7 @@ export type LetterRow = {
   answered_required_count?: number;
   total_questions_count?: number;
   answered_questions_count?: number;
+  selected_questions_count?: number;
 };
 
 export function makeLocalId() {
@@ -67,7 +68,8 @@ export async function listLetters(userPhone: string, params?: { onlyDrafts?: boo
         WHERE a.letter_id=ll.local_id AND q.is_required=1 AND length(trim(a.answer_text)) > 0) AS answered_required_count,
       (SELECT COUNT(*) FROM questions) AS total_questions_count,
       (SELECT COUNT(*) FROM letter_answers a
-        WHERE a.letter_id=ll.local_id AND length(trim(a.answer_text)) > 0) AS answered_questions_count
+        WHERE a.letter_id=ll.local_id AND length(trim(a.answer_text)) > 0) AS answered_questions_count,
+      (SELECT COUNT(*) FROM letter_answers a WHERE a.letter_id=ll.local_id AND a.answer_in_message=1) AS selected_questions_count
     FROM local_letters ll
     WHERE ll.local_user_phone = ?
     ${whereStatus}
@@ -88,6 +90,7 @@ export async function listLetters(userPhone: string, params?: { onlyDrafts?: boo
     answered_required_count: Number(r.answered_required_count ?? 0),
     total_questions_count: Number(r.total_questions_count ?? 0),
     answered_questions_count: Number(r.answered_questions_count ?? 0),
+    selected_questions_count: Number(r.selected_questions_count ?? 0),
   }));
 }
 
@@ -108,7 +111,8 @@ export async function getLetter(localId: string): Promise<LetterRow | null> {
         WHERE a.letter_id=ll.local_id AND q.is_required=1 AND length(trim(a.answer_text)) > 0) AS answered_required_count,
       (SELECT COUNT(*) FROM questions) AS total_questions_count,
       (SELECT COUNT(*) FROM letter_answers a
-        WHERE a.letter_id=ll.local_id AND length(trim(a.answer_text)) > 0) AS answered_questions_count
+        WHERE a.letter_id=ll.local_id AND length(trim(a.answer_text)) > 0) AS answered_questions_count,
+      (SELECT COUNT(*) FROM letter_answers a WHERE a.letter_id=ll.local_id AND a.answer_in_message=1) AS selected_questions_count
      FROM local_letters ll WHERE ll.local_id = ? LIMIT 1`,
     [localId]
   );
@@ -126,6 +130,7 @@ export async function getLetter(localId: string): Promise<LetterRow | null> {
     answered_required_count: Number(row.answered_required_count ?? 0),
     total_questions_count: Number(row.total_questions_count ?? 0),
     answered_questions_count: Number(row.answered_questions_count ?? 0),
+    selected_questions_count: Number(row.selected_questions_count ?? 0),
   };
 }
 

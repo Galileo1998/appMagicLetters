@@ -20,3 +20,13 @@ export function strokePath(points: Point[]): string {
 export function canEditLetter(status?: string | null): boolean {
   return ['DRAFT', 'ASSIGNED', 'RETURNED'].includes(status ?? '');
 }
+
+/** New letters answer one selected prompt within the full message; retain legacy completion. */
+export function isMessageComplete(letter: { has_message?: number; selected_questions_count?: number; answered_questions_count?: number; answered_required_count?: number; required_questions_count?: number } | null): boolean {
+  return !!letter && letter.has_message === 1 && (
+    (letter.selected_questions_count ?? 0) > 0 || (
+      (letter.answered_questions_count ?? 0) > 0 &&
+      (letter.answered_required_count ?? 0) === (letter.required_questions_count ?? 0)
+    )
+  );
+}

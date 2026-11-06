@@ -6,6 +6,8 @@ import { ActivityIndicator, Alert, ScrollView, StyleSheet, Switch, Text, Touchab
 import { getLetter, LetterRow, queueLetterForSync, setPhotoRequired } from "../../../src/repos/letters_repo";
 import { requestAutomaticSync } from "../../../src/services/automatic_sync";
 
+import { isMessageComplete } from "../../../src/drawing/model";
+
 export default function LetterMenuScreen() {
   const { letterId } = useLocalSearchParams<{ letterId: string }>();
   const router = useRouter();
@@ -23,14 +25,11 @@ export default function LetterMenuScreen() {
 
   // Verificar si todo está completo
   const isReadyToSend = letter && 
-    letter.has_message === 1 && 
+    isMessageComplete(letter) && 
     (letter.photo_required === 0 || (letter.photos_count || 0) > 0) &&
     letter.photos_count === letter.described_photos_count &&
     letter.has_drawing === 1 &&
-    letter.has_drawing_description === 1 &&
-    (letter.answered_required_count || 0) === (letter.required_questions_count || 0) &&
-    (letter.total_questions_count || 0) > 0 &&
-    (letter.answered_questions_count || 0) > 0;
+    letter.has_drawing_description === 1;
 
   async function handleSend() {
     Alert.alert(
@@ -61,8 +60,7 @@ export default function LetterMenuScreen() {
 
   const canEdit = ["DRAFT", "ASSIGNED", "RETURNED"].includes(letter.status);
 
-  const messageComplete = !!letter.has_message && (letter.answered_questions_count || 0) > 0 &&
-    letter.answered_required_count === letter.required_questions_count;
+  const messageComplete = isMessageComplete(letter);
   return (
     <View style={styles.container}>
       <ChildBackground />
