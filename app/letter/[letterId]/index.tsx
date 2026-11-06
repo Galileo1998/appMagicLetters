@@ -25,7 +25,7 @@ export default function LetterMenuScreen() {
 
   // Verificar si todo está completo
   const isReadyToSend = letter && 
-    isMessageComplete(letter) && 
+    isMessageComplete(letter) &&
     (letter.photo_required === 0 || (letter.photos_count || 0) > 0) &&
     letter.photos_count === letter.described_photos_count &&
     letter.has_drawing === 1 &&
