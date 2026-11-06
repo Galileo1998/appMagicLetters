@@ -1,5 +1,4 @@
 import { AppIcon as Ionicons } from './components/AppIcon';
-import { ChildBackground } from './components/ChildBackground';
 import { useFocusEffect, useRouter } from 'expo-router'; // 👈 AGREGADO: useFocusEffect
 import { useNetInfo } from '@react-native-community/netinfo';
 import React, { useCallback, useEffect, useState } from 'react';
@@ -7,12 +6,14 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Image,
   RefreshControl,
   StyleSheet,
   Text,
   TouchableOpacity,
   View
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { initDb } from '../src/db';
 import { getLogoutBlockReason, getMe, logout, UserRow } from '../src/repos/auth_repo';
@@ -22,6 +23,7 @@ import { subscribeToAutomaticSync } from '../src/services/automatic_sync';
 
 export default function HomeScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [letters, setLetters] = useState<LetterRow[]>([]);
   const [user, setUser] = useState<UserRow | null>(null);
   const [loading, setLoading] = useState(false);
@@ -230,10 +232,10 @@ export default function HomeScreen() {
   );
 
   return (
-    <View style={styles.container}>
-      <ChildBackground />
-      <View style={styles.header}>
-        <View>
+    <View style={[styles.container, { paddingLeft: insets.left, paddingRight: insets.right }]}>
+      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
+        <View style={styles.userHeader}>
+        <View style={styles.userInfo}>
           <Text style={styles.welcomeTitle}>
             Hola, {user?.name ? user.name.split(' ')[0] : 'Técnico'} 👋
           </Text>
@@ -242,12 +244,13 @@ export default function HomeScreen() {
           </Text>
         </View>
         <View style={styles.headerIcons}>
-          <TouchableOpacity onPress={handleSync} disabled={syncing} style={styles.iconBtn}>
+          <TouchableOpacity accessibilityLabel="Sincronizar cartas" onPress={handleSync} disabled={syncing} style={styles.iconBtn}>
             {syncing ? <ActivityIndicator size="small" color="#1e62d0" /> : <Ionicons name="cloud-download-outline" size={26} color="#1e62d0" />}
           </TouchableOpacity>
-          <TouchableOpacity onPress={handleLogout} style={styles.iconBtn}>
+          <TouchableOpacity accessibilityLabel="Cerrar sesión" onPress={handleLogout} style={styles.iconBtn}>
             <Ionicons name="log-out-outline" size={26} color="#dc3545" />
           </TouchableOpacity>
+        </View>
         </View>
       </View>
 
@@ -258,11 +261,18 @@ export default function HomeScreen() {
         </View>
       ) : null}
 
+      <View style={styles.lettersArea}>
+        <View pointerEvents="none" style={styles.watermarkLayer}>
+          <Image testID="institutional-watermark" source={require('../assets/logo.png')}
+            style={styles.institutionalWatermark} resizeMode="contain"
+            accessible={false} importantForAccessibility="no" />
+        </View>
       <FlatList
+        style={styles.lettersList}
         data={letters}
         keyExtractor={(item) => item.local_id}
         renderItem={renderItem}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 100 }]}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={loadData} />}
         ListEmptyComponent={
           <View style={styles.emptyState}>
@@ -271,9 +281,10 @@ export default function HomeScreen() {
           </View>
         }
       />
+      </View>
       
       {/* Botón flotante para crear carta manual (si lo usas) */}
-      <TouchableOpacity style={styles.fab} onPress={() => router.push("/create")}>
+      <TouchableOpacity style={[styles.fab, { bottom: insets.bottom + 20 }]} onPress={() => router.push("/create")}>
         <Ionicons name="add" size={30} color="#fff" />
       </TouchableOpacity>
     </View>
@@ -283,16 +294,21 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f4f7f6' },
   header: { 
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', 
-    paddingHorizontal: 20, paddingBottom: 15, paddingTop: 60, 
+    paddingHorizontal: 20, paddingBottom: 15,
     backgroundColor: 'rgba(255,255,255,0.94)', borderBottomWidth: 1, borderBottomColor: '#eee'
   },
+  lettersArea: { flex: 1, minHeight: 0 },
+  lettersList: { flex: 1 },
+  watermarkLayer: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
+  institutionalWatermark: { width: '84%', height: '70%', maxWidth: 440, maxHeight: 360, opacity: 0.12 },
+  userHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  userInfo: { flex: 1, minWidth: 0 },
   welcomeTitle: { fontSize: 20, fontWeight: '900', color: '#333' },
   phoneSubtitle: { fontSize: 13, color: '#666', marginTop: 2, fontWeight: '500' },
-  headerIcons: { flexDirection: 'row', gap: 15 },
+  headerIcons: { flexDirection: 'row', flexShrink: 0, gap: 15 },
   iconBtn: { padding: 5 },
   listContent: { padding: 15 },
-  card: { backgroundColor: 'white', padding: 15, borderRadius: 12, marginBottom: 12, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 5, elevation: 2 },
+  card: { backgroundColor: 'rgba(255,255,255,0.6)', padding: 15, borderRadius: 12, marginBottom: 12, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 5, elevation: 2 },
   cardReturned: { borderLeftWidth: 5, borderLeftColor: '#dc3545' },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 },
   slipText: { fontWeight: 'bold', color: '#888', fontSize: 12 },
